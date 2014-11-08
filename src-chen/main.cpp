@@ -9,12 +9,12 @@
 int main(void)
 {
   // parameters
-  int n = 1965;                 // # data points
-  int D = 560;                  // data dimension
-  char fname[] = "example.dat"; // data file
-  char outf[] = "out.knn";  // output knn graph to file
+  int n = 10000;                 // # data points
+  int D = 784;                  // data dimension
+  char fname[] = "../data/mnist-test.dat"; // data file
+  char outf[] = "../data/mnist-test.brute";  // output knn graph to file
   double r = 0.3;               // overlap size
-  int k = 12;                   // # neighbors
+  int k = 8;                   // # neighbors
   int p = k*5;                  // largest size for bruteforce
 
   // read in data
@@ -27,7 +27,7 @@ int main(void)
     }
 
 
-  /*
+  
   //////////////////////
   //  bruteforce kNN  //
   //////////////////////
@@ -54,8 +54,8 @@ int main(void)
   // print elapsed time
   double cpu_time_used = ((double) (end - start)) / CLOCKS_PER_SEC;
   printf("elapsed time: %.2f\n", cpu_time_used);
-  */
-
+ 
+/*
 
   ////////////////////////////////////////////
   //  divide and conquer kNN, glue version  //
@@ -92,6 +92,8 @@ int main(void)
   printf("elapsed time: %.2f\n", cpu_time_used);
 
 
+*/
+
   /*
   ///////////////////////////////////////////////
   //  divide and conquer kNN, overlap version  //
@@ -126,8 +128,7 @@ int main(void)
   // print elapsed time
   double cpu_time_used = ((double) (end - start)) / CLOCKS_PER_SEC;
   printf("elapsed time: %.2f\n", cpu_time_used);
-  */
-
+*/
 
   // clean up
   delete_2d_array(X, n, D);
