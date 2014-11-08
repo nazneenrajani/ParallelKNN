@@ -1,5 +1,6 @@
 import numpy as np
 from sklearn.neighbors import NearestNeighbors
+import time
 import sys
 
 # Usage:
@@ -13,8 +14,15 @@ import sys
 def get_knn_graph(data_file, k, d, N, alg):
   a = np.fromfile(data_file, dtype=float).reshape((N,d))
   k_plus_1 = k+1
+  t_start = time.time()
   nbrs = NearestNeighbors(n_neighbors=(k_plus_1), algorithm=alg).fit(a)
+  t_tree = time.time()
   knn_graph = nbrs.kneighbors_graph(a).toarray()
+  t_graph = time.time() - t_tree
+  t = time.time() - t_start
+  print 'time to fit model = ' + str(t_tree-t_start) + " seconds"
+  print 'time to make knn graph = ' + str(t_graph) + " seconds"
+  print 'overall time = ' + str(t) + " seconds"
   return knn_graph
 
 if __name__ == '__main__':
