@@ -27,11 +27,11 @@ using namespace std;
  * flags on.
  */
 #define BasicKDTreeTestEnabled          1 // Step one checks
-#define ModerateKDTreeTestEnabled       0 
-#define HarderKDTreeTestEnabled         0
-#define EdgeCaseKDTreeTestEnabled       0
-#define MutatingKDTreeTestEnabled       0
-#define ThrowingKDTreeTestEnabled       0
+#define ModerateKDTreeTestEnabled       1
+#define HarderKDTreeTestEnabled         1
+#define EdgeCaseKDTreeTestEnabled       1
+#define MutatingKDTreeTestEnabled       1
+#define ThrowingKDTreeTestEnabled       1
   
 #define NearestNeighborTestEnabled      0 // Step two checks
 #define MoreNearestNeighborTestEnabled  0
@@ -169,10 +169,10 @@ void BasicKDTreeTest() try {
   CheckCondition(kd.contains(PointFromRange<3>(dataPoints[0], dataPoints[0] + 3)), "New KD tree has element zero.");
   CheckCondition(kd.contains(PointFromRange<3>(dataPoints[1], dataPoints[1] + 3)), "New KD tree has element one.");
   CheckCondition(kd.contains(PointFromRange<3>(dataPoints[2], dataPoints[2] + 3)), "New KD tree has element two.");
-//
-//  /* Make sure that the values of these points are correct. */
-//  for (size_t i = 0; i < 3; ++i)
-//    CheckCondition(kd.at(PointFromRange<3>(dataPoints[i], dataPoints[i] + 3)) == i, "New KD tree has correct values.");
+
+  /* Make sure that the values of these points are correct. */
+  for (size_t i = 0; i < 3; ++i)
+    CheckCondition(kd.at(PointFromRange<3>(dataPoints[i], dataPoints[i] + 3)) == i, "New KD tree has correct values.");
 
   EndTest();
 #else
@@ -347,8 +347,10 @@ void MutatingKDTreeTest() try {
 
   /* Add points using []. */
   KDTree<3, size_t> kd;
-  for (size_t i = 0; i < 8; ++i)
-    kd[PointFromRange<3>(dataPoints[i], dataPoints[i] + 3)] = i;
+  for (size_t i = 0; i < 8; ++i) {
+    kd[PointFromRange<3>(dataPoints[i], dataPoints[i] + 3)] = 200+i;
+//  	printf("Added point %d with value %d\n", i, kd[PointFromRange<3>(dataPoints[i], dataPoints[i] + 3)]);
+  }
 
   /* Basic checks. */
   CheckCondition(kd.dimension() == 3, "Dimension is three.");
@@ -359,17 +361,17 @@ void MutatingKDTreeTest() try {
   for (size_t i = 0; i < kd.size(); ++i)
     CheckCondition(kd.contains(PointFromRange<3>(dataPoints[i], dataPoints[i] + 3)), "Lookup succeeded.");
 
-  /* Change every other element to have key 0. */
+  /* Change every other element to have key 100. */
   for (size_t i = 0; i < 8; i += 2)
-    kd[PointFromRange<3>(dataPoints[i], dataPoints[i] + 3)] = 0;
+    kd[PointFromRange<3>(dataPoints[i], dataPoints[i] + 3)] = 100;
 
   /* Check that the keys are right. */
   for (size_t i = 1; i < 8; i += 2)
-    CheckCondition(kd[PointFromRange<3>(dataPoints[i], dataPoints[i] + 3)] == i, "Keys are correct for odd elements.");
+    CheckCondition(kd[PointFromRange<3>(dataPoints[i], dataPoints[i] + 3)] == 200+i, "Keys are correct for odd elements.");
 
   /* Check that the keys are right. */
   for (size_t i = 0; i < 8; i += 2)
-    CheckCondition(kd[PointFromRange<3>(dataPoints[i], dataPoints[i] + 3)] == 0, "Keys are correct for even elements.");
+    CheckCondition(kd[PointFromRange<3>(dataPoints[i], dataPoints[i] + 3)] == 100, "Keys are correct for even elements.");
 
   EndTest();
 #else

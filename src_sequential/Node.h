@@ -16,7 +16,8 @@ public:
 	const Point<N>& getPoint() const;
 	Node<N, ElemType>* getLeftChild() const;
 	Node<N, ElemType>* getRightChild() const;
-	ElemType& getVal() const;
+	const ElemType& getVal() const;
+	ElemType& getVal();
 	void setVal(const ElemType& val);
 	bool add(const Point<N>& pt, const ElemType& value, int level);
 
@@ -43,7 +44,13 @@ template <size_t N, typename ElemType> const Point<N>& Node<N, ElemType>::getPoi
 	return pt;
 }
 
-template <size_t N, typename ElemType> ElemType& Node<N, ElemType>::getVal() const {
+template <size_t N, typename ElemType> ElemType& Node<N, ElemType>::getVal() {
+//	printf("non-const getVal\n");
+	return val;
+}
+
+template <size_t N, typename ElemType> const ElemType& Node<N, ElemType>::getVal() const {
+//	printf("const getVal\n");
 	return val;
 }
 

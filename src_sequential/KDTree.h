@@ -70,7 +70,7 @@ public:
 	 * Returns whether the specified point is contained in 
 	 * the KDTree.
 	 */
-	bool contains(const Point<N>& pt) const;
+	bool contains(const Point<N>& pt) const; // done
 
 	/* void insert(const Point<N>& pt, const ElemType& value);
 	 * Usage: kd.insert(v, "This value is associated with v.");
@@ -80,7 +80,7 @@ public:
 	 * in the tree, the new value will overwrite the existing
 	 * one.
 	 */
-	void insert(const Point<N>& pt, const ElemType& value);
+	void insert(const Point<N>& pt, const ElemType& value); // done
 
 	/* ElemType& operator[] (const Point<N>& pt);
 	 * Usage: kd[v] = "Some Value";
@@ -90,7 +90,7 @@ public:
 	 * it is added to the KDTree using the default value of
 	 * ElemType as its key.
 	 */
-	ElemType& operator[] (const Point<N>& pt);
+	ElemType& operator[] (const Point<N>& pt); // done
 
 	/* ElemType& at(const Point<N>& pt);
 	 * const ElemType& at(const Point<N>& pt) const;
@@ -177,6 +177,36 @@ template <size_t N, typename ElemType> Node<N, ElemType>* KDTree<N, ElemType>::f
 
 template <size_t N, typename ElemType> bool KDTree<N, ElemType>::contains(const Point<N>& pt) const {
 	return (findNode(pt) != NULL);
+}
+
+template <size_t N, typename ElemType> ElemType& KDTree<N, ElemType>::operator[] (const Point<N>& pt) {
+	Node<N, ElemType>* n = findNode(pt);
+	if (n != NULL) {
+		return n->getVal();
+	}
+	else {
+		ElemType* d = new ElemType();
+		this->insert(pt, *d);
+//		return *d;
+		n = findNode(pt);
+		return n->getVal();
+	}
+}
+
+template <size_t N, typename ElemType> ElemType& KDTree<N, ElemType>::at(const Point<N>& pt) {
+	Node<N, ElemType>* n = findNode(pt);
+	if (n == NULL) {
+		throw out_of_range("at");
+	}
+	return n->getVal();
+}
+
+template <size_t N, typename ElemType> const ElemType& KDTree<N, ElemType>::at(const Point<N>& pt) const {
+	Node<N, ElemType>* n = findNode(pt);
+	if (n == NULL) {
+		throw out_of_range("at");
+	}
+	return n->getVal();
 }
 
 
