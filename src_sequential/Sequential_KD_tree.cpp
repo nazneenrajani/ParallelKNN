@@ -19,6 +19,7 @@
 #include <cstdarg>
 #include <set>
 #include "KDTree.h"
+#include "Node.h"
 using namespace std;
 
 /* These flags control which tests will be run.  Initially, only the
@@ -33,11 +34,11 @@ using namespace std;
 #define MutatingKDTreeTestEnabled       1
 #define ThrowingKDTreeTestEnabled       1
   
-#define NearestNeighborTestEnabled      0 // Step two checks
-#define MoreNearestNeighborTestEnabled  0
+#define NearestNeighborTestEnabled      1 // Step two checks
+#define MoreNearestNeighborTestEnabled  1
 
-#define BasicCopyTestEnabled            0 // Step three checks
-#define ModerateCopyTestEnabled         0
+#define BasicCopyTestEnabled            1 // Step three checks
+#define ModerateCopyTestEnabled         1
 
 /* A utility function to construct a Point from a range of iterators. */
 template <size_t N, typename IteratorType>
@@ -487,8 +488,15 @@ void NearestNeighborTest() try {
     CheckCondition(kd.kNNValue(PointFromRange<4>(dataPoints[i], dataPoints[i] + 4), 1) == i, "Nearest neighbor of element is that element.");
 
   /* Check that calling nearest neighbor on the test points yields the correct tree points. */
-  for (size_t i = 0; i < 16; ++i)
+  for (size_t i = 0; i < 16; ++i) {
     CheckCondition(kd.kNNValue(PointFromRange<4>(testPoints[i], testPoints[i] + 4), 1) == i, "Test point yielded correct nearest neighbor.");
+//    vector<const Node<4, size_t>*> neighbors = kd.get_kNN(PointFromRange<4>(testPoints[i], testPoints[i] + 4), 1);
+//    cout << "Closest point: ";
+//    for (Point<4>::const_iterator itr = neighbors[0]->getPoint().begin(); itr != neighbors[0]->getPoint().end(); ++itr) {
+//    	cout << *itr << " ";
+//    }
+//    cout << endl;
+  }
 
   EndTest();
 #else
@@ -534,6 +542,15 @@ void MoreNearestNeighborTest() try {
    * the point itself is 'b'.
    */
   CheckCondition(kd.kNNValue(MakePoint(0.0, 0.5), 4) == 'a', "Nearest neighbors are correct.");
+//  vector<const Node<2, char>*> neighbors = kd.get_kNN(MakePoint(0.0, 0.5), 4);
+//  cout << "Closest points:" << endl;
+//  for (int i = 0; i < 4; ++i) {
+//	  for (Point<4>::const_iterator itr = neighbors[i]->getPoint().begin(); itr != neighbors[i]->getPoint().end(); ++itr) {
+//	  	cout << *itr << " ";
+//	  }
+//	  cout << endl;
+//  }
+
 
   /* Check for the nine points closest to the center.  This should give us 'b' even though the
    * point itself is 'a'
@@ -605,9 +622,9 @@ void BasicCopyTest() try {
     /* Create a clone of one and confirm that everything copied correctly. 
      * This uses the assignment operator.
      */
+
     KDTree<1, size_t> clone;
     clone = one;
-
     /* Basic checks. */
     CheckCondition(one.size() == clone.size(),           "Copy has the same number of elements as the original.");
     CheckCondition(one.empty() == clone.empty(),         "Copy and original agree on emptiness.");
@@ -632,7 +649,7 @@ void BasicCopyTest() try {
 
 /* A more merciless test of copy behavior.. */
 void ModerateCopyTest() try {
-#if BasicCopyTestEnabled
+#if ModerateCopyTestEnabled
   PrintBanner("Moderate Copy Test");
 
   /* For simplicity, we'll use one-dimensional KDTrees in this step. */

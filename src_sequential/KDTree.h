@@ -17,6 +17,8 @@
 #include "Node.h"
 #include <stdexcept>
 #include <cmath>
+#include <map>
+#include <vector>
 using namespace std;
 
 template <size_t N, typename ElemType> class KDTree {
@@ -33,7 +35,8 @@ public:
 	 * ----------------------------------------------------
 	 * Cleans up all resources used by the KDTree.
 	 */
-	~KDTree(); // TODO
+	void remove_node(Node<N, ElemType>* node);
+	~KDTree(); // done
 
 	/* KDTree(const KDTree& rhs);
 	 * KDTree& operator= (const KDTree& rhs);
@@ -43,8 +46,8 @@ public:
 	 * Deep-copies the contents of another KDTree into this
 	 * one.
 	 */
-//	KDTree(const KDTree& rhs); // needed?
-//	KDTree& operator= (const KDTree& rhs); // needed?
+	KDTree(const KDTree& other); // done
+	KDTree& operator= (const KDTree& other);
 
 	/* size_t dimension() const;
 	 * Usage: size_t dim = kd.dimension();
@@ -100,8 +103,8 @@ public:
 	 * pt.  If the point is not in the tree, this function throws
 	 * an out_of_range exception.
 	 */
-	ElemType& at(const Point<N>& pt);
-	const ElemType& at(const Point<N>& pt) const;
+	ElemType& at(const Point<N>& pt); // done
+	const ElemType& at(const Point<N>& pt) const; // done
 
 	/* ElemType kNNValue(const Point<N>& key, size_t k) const
 	 * Usage: cout << kd.kNNValue(v, 3) << endl;
@@ -111,7 +114,9 @@ public:
 	 * value associated with those points.  In the event of
 	 * a tie, one of the most frequent value will be chosen.
 	 */
-	ElemType kNNValue(const Point<N>& key, size_t k) const;
+	void search_subtree(BoundedPQueue<const Node<N, ElemType>*>& bpq, const Node<N, ElemType>* curr, const Point<N>& key, int level) const; // done
+	ElemType kNNValue(const Point<N>& key, size_t k) const; // done
+	vector<const Node<N, ElemType>*> get_kNN(const Point<N>& key, size_t k) const;
 
 private:
   Node<N, ElemType>* root;
@@ -126,9 +131,43 @@ template <size_t N, typename ElemType> KDTree<N, ElemType>::KDTree() {
   root = NULL;
 }
 
-template <size_t N, typename ElemType> KDTree<N, ElemType>::~KDTree() {
-  // TODO: Fill this in.
+template <size_t N, typename ElemType> KDTree<N, ElemType>::KDTree(const KDTree& other) {
+  n_items = other.n_items;
+  if (other.root != NULL) {
+	  root = new Node<N, ElemType>(*(other.root));
+  }
+  else { root = NULL; }
 }
+
+template <size_t N, typename ElemType> KDTree<N, ElemType>& KDTree<N, ElemType>::operator= (const KDTree& other) {
+  if (this != &other) {
+	  n_items = other.n_items;
+	  if (other.root != NULL) {
+		  if (root != NULL) {
+			  remove_node(root);
+		  }
+		  root = new Node<N, ElemType>(*(other.root));
+	  }
+	  else { root = NULL; }
+  }
+  return *this;
+}
+
+template <size_t N, typename ElemType> void KDTree<N, ElemType>::remove_node(Node<N, ElemType>* node) {
+	Node<N, ElemType>* lc = node->getLeftChild();
+	if (lc != NULL) remove_node(lc);
+	Node<N, ElemType>* rc = node->getRightChild();
+	if (rc != NULL) remove_node(rc);
+	delete node;
+}
+
+template <size_t N, typename ElemType> KDTree<N, ElemType>::~KDTree() {
+  if (root != NULL) {
+	  remove_node(root);
+  }
+}
+
+
 
 template <size_t N, typename ElemType> size_t KDTree<N, ElemType>::dimension() const {
   return N;
@@ -209,5 +248,58 @@ template <size_t N, typename ElemType> const ElemType& KDTree<N, ElemType>::at(c
 	return n->getVal();
 }
 
+template <size_t N, typename ElemType> void KDTree<N, ElemType>::search_subtree(BoundedPQueue<const Node<N, ElemType>*>& bpq, const Node<N, ElemType>* curr, const Point<N>& key, int level) const {
+	if (curr == NULL) { return; }
+	double dist = Distance(curr->getPoint(), key);
+	bpq.enqueue(curr, dist);
+	char child_searched = 'l';
+	if (key[level] < curr->getPoint()[level]) {
+		search_subtree(bpq, curr->getLeftChild(), key, (level+1)%curr->getPoint().size());
+	}
+	else {
+		search_subtree(bpq, curr->getRightChild(), key, (level+1)%curr->getPoint().size());
+		child_searched = 'r';
+	}
+	if ( (bpq.size() < bpq.maxSize()) || (fabs(key[level] - curr->getPoint()[level]) < bpq.worst()) ) {
+		if (child_searched == 'l') {
+			search_subtree(bpq, curr->getRightChild(), key, (level+1)%curr->getPoint().size());
+		}
+		else {
+			search_subtree(bpq, curr->getLeftChild(), key, (level+1)%curr->getPoint().size());
+		}
+	}
+}
+
+template <size_t N, typename ElemType> ElemType KDTree<N, ElemType>::kNNValue(const Point<N>& key, size_t k) const {
+	BoundedPQueue<const Node<N, ElemType>*> bpq(k);
+	search_subtree(bpq, root, key, 0);
+
+	map<ElemType, int> labels;
+	while (!bpq.empty()) {
+		const Node<N, ElemType>* node = bpq.dequeueMin();
+		labels[node->getVal()] = labels[node->getVal()] + 1;
+	}
+	ElemType best_label;
+	int max_count;
+	for (typename map<ElemType, int>::iterator it = labels.begin(); it != labels.end(); ++it) {
+		if (it->second > max_count) {
+			max_count = it->second;
+			best_label = it->first;
+		}
+	}
+	return best_label;
+}
+
+template <size_t N, typename ElemType> vector<const Node<N, ElemType>*> KDTree<N, ElemType>::get_kNN(const Point<N>& key, size_t k) const {
+	BoundedPQueue<const Node<N, ElemType>*> bpq(k);
+	search_subtree(bpq, root, key, 0);
+
+	vector<const Node<N, ElemType>*> neighbors;
+	neighbors.reserve(k);
+	while (!bpq.empty()) {
+		neighbors.push_back(bpq.dequeueMin());
+	}
+	return neighbors;
+}
 
 #endif

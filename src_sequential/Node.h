@@ -10,7 +10,10 @@
 
 template <size_t N, typename ElemType> class Node {
 public:
+	Node();
 	Node(const Point<N>& pt, const ElemType& val);
+	Node(const Node& other);
+	Node<N, ElemType>& operator= (const Node& other);
 	~Node();
 
 	const Point<N>& getPoint() const;
@@ -29,11 +32,48 @@ private:
 	Node* right;
 };
 
+template <size_t N, typename ElemType> Node<N, ElemType>::Node() {
+	val = 0;
+	left = NULL;
+	right = NULL;
+}
+
 template <size_t N, typename ElemType> Node<N, ElemType>::Node(const Point<N>& pt, const ElemType& val) {
 	this->val = val;
 	this->pt = pt;
 	left = NULL;
 	right = NULL;
+}
+
+template <size_t N, typename ElemType> Node<N, ElemType>::Node(const Node& other) {
+	val = other.val;
+	pt = other.pt;
+	if (other.left != NULL) {
+		left = new Node<N, ElemType>(*(other.left));
+	}
+	else { left = NULL; }
+	if (other.right != NULL) {
+		right = new Node<N, ElemType>(*(other.right));
+	}
+	else { right = NULL; }
+}
+
+template <size_t N, typename ElemType> Node<N, ElemType>& Node<N, ElemType>::operator= (const Node& other) {
+	printf("entered op= for Node\n");
+	if (this != &other) {
+		cout << "val = " << this->val << endl;
+		val = other.val;
+		pt = other.pt;
+		if (other.left != NULL) {
+			*left = *other.left;
+		}
+		else { left = NULL; }
+		if (other.right != NULL) {
+			*right = *other.right;
+		}
+		else { right = NULL; }
+	}
+	return *this;
 }
 
 template <size_t N, typename ElemType> Node<N, ElemType>::~Node() {
