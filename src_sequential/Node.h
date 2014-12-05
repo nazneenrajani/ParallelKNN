@@ -1,8 +1,8 @@
-/*
- * Node.h
+/********************************************************************
+ * File: Node.h
+ * Author: Kate McArdle
  *
- *  Created on: Nov 11, 2014
- *      Author: katemcardle
+ * An interface representing a node in a kd-tree in some number of dimensions.
  */
 
 #ifndef NODE_H_
@@ -19,6 +19,8 @@ public:
 	const Point<N>& getPoint() const;
 	Node<N, ElemType>* getLeftChild() const;
 	Node<N, ElemType>* getRightChild() const;
+	void setLeftChild(Node<N, ElemType>* child);
+	void setRightChild(Node<N, ElemType>* child);
 	const ElemType& getVal() const;
 	ElemType& getVal();
 	void setVal(const ElemType& val);
@@ -104,6 +106,14 @@ template <size_t N, typename ElemType> Node<N, ElemType>* Node<N, ElemType>::get
 
 template <size_t N, typename ElemType> Node<N, ElemType>* Node<N, ElemType>::getRightChild() const {
 	return right;
+}
+
+template <size_t N, typename ElemType> void Node<N, ElemType>::setLeftChild(Node<N, ElemType>* child) {
+	this->left = child;
+}
+
+template <size_t N, typename ElemType> void Node<N, ElemType>::setRightChild(Node<N, ElemType>* child) {
+	this->right = child;
 }
 
 template <size_t N, typename ElemType> bool Node<N, ElemType>::add(const Point<N>& newPt, const ElemType& value, int level) {
