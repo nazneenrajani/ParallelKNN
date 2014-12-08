@@ -48,21 +48,49 @@ struct P_buildTree {
 	int kd_hi_idx;
 	int dim;
 	bool isLeftChild;
-	vector<KDNode>& kdnodes;
-	Graph* tree_ptr;
-	GNode* gnodes;
 
-	P_buildTree(int gnode_parent_idx, int kd_lo_idx, int kd_hi_idx, int dim, bool isLeftChild, vector<KDNode>& kdnodes, Graph* tree_ptr, GNode* gnodes) : kdnodes(kdnodes) {
+	P_buildTree(int gnode_parent_idx, int kd_lo_idx, int kd_hi_idx, int dim, bool isLeftChild) {
 		this->gnode_parent_idx = gnode_parent_idx;
 		this->kd_lo_idx = kd_lo_idx;
 		this->kd_hi_idx = kd_hi_idx;
 		this->dim = dim;
 		this->isLeftChild = isLeftChild;
-		this->tree_ptr = tree_ptr;
+	}
+};
+
+struct P_addTreeEdge {
+	vector<KDNode>& kdnodes;
+	Graph& tree;
+	GNode* gnodes;
+	int n_dims;
+
+	P_addTreeEdge(vector<KDNode>& kdnodes, Graph& tree, GNode* gnodes, int n_dims) : kdnodes(kdnodes), tree(tree) {
 		this->gnodes = gnodes;
+		this->n_dims = n_dims;
 	}
 
+	void operator() (P_buildTree& curr, Galois::UserContext<P_buildTree>& wl) {
+		// base cases:
+		if (curr.kd_hi_idx == curr.kd_lo_idx) { return; }
+		if ((curr.kd_hi_idx - curr.kd_lo_idx) == 1) {
+			int gnode_idx = kdnodes[curr.kd_lo_idx].idx;
+			tree.addEdge(gnodes[curr.gnode_parent_idx], gnodes[gnode_idx]);
+			KDNode& n = tree.getData(gnodes[gnode_idx]);
+			n.isLeftChild = curr.isLeftChild;
+			n.dim = curr.dim;
+			return;
+		}
 
+		sort(kdnodes.begin()+curr.kd_lo_idx, kdnodes.begin()+curr.kd_hi_idx, CompareNodes(curr.dim));
+		int med_idx = curr.kd_lo_idx + (curr.kd_hi_idx-curr.kd_lo_idx)/2;
+		int gnode_idx = kdnodes[med_idx].idx;
+		wl.push(P_buildTree(gnode_idx, curr.kd_lo_idx, med_idx, (curr.dim+1)%n_dims, true));
+		wl.push(P_buildTree(gnode_idx, med_idx+1, curr.kd_hi_idx, (curr.dim+1)%n_dims, false));
+		tree.addEdge(gnodes[curr.gnode_parent_idx], gnodes[gnode_idx]);
+		KDNode& n = tree.getData(gnodes[gnode_idx]);
+		n.isLeftChild = curr.isLeftChild;
+		n.dim = curr.dim;
+	}
 };
 
 /* data in file was stored in binary format. Source: Chen */
@@ -111,15 +139,16 @@ int main(int argc, char **argv) {
 	double data_read_time = ((double) (data_read_end - data_read_start)) / CLOCKS_PER_SEC;
 	printf("time to read data: %f\n", data_read_time);
 
+	Galois::setActiveThreads(1);
 
 	/* Convert to vector of KDNodes and insert into graph: */
-	clock_t points_start = clock();
 	Graph kdtree;
-	Graph* tree_ptr = &kdtree;
 	vector<KDNode> kdnodes; // vector of kdtree nodes, NOT in indexed order (starts in order, but will be resorted)
 	kdnodes.reserve(N);
 	GNode* gnodes; // array of graph nodes, IN indexed order: gnodes[0] corresponds to the first data point in the file
 	gnodes = (GNode*) malloc(N*sizeof(GNode));
+	clock_t points_start = clock();
+	clock_t tree_start = clock();
 	for (int i = 0; i < N; ++i) {
 		kdnodes.emplace_back(data[i], i);
 		gnodes[i] = kdtree.createNode(kdnodes[i]);
@@ -148,61 +177,42 @@ int main(int argc, char **argv) {
 		cout << endl;
 
 	/* Build KDTree */
-	clock_t tree_start = clock();
+//	clock_t tree_start = clock();
 	sort(kdnodes.begin(), kdnodes.end(), CompareNodes(0));
 	int median = N/2;
 	int root_node_idx = kdnodes[median].idx; // corresponds to the root's index in gnodes: gnodes[root_node_idx]
 	KDNode& root = kdtree.getData(gnodes[root_node_idx]);
 	root.dim = 0;
 	vector<P_buildTree> worklist;
-	worklist.emplace_back(root_node_idx, 0, median, 1, true, kdnodes, tree_ptr, gnodes);
-	worklist.emplace_back(root_node_idx, median+1, N, 1, false, kdnodes, tree_ptr, gnodes);
-	while (!worklist.empty()) {
-		P_buildTree curr = worklist.back();
-		worklist.pop_back();
-		// base cases:
-		if (curr.kd_hi_idx == curr.kd_lo_idx) { continue; }
-		if ((curr.kd_hi_idx - curr.kd_lo_idx) == 1) {
-			int gnode_idx = kdnodes[curr.kd_lo_idx].idx;
-			kdtree.addEdge(gnodes[curr.gnode_parent_idx], gnodes[gnode_idx]);
-			KDNode& n = kdtree.getData(gnodes[gnode_idx]);
-			n.isLeftChild = curr.isLeftChild;
-			n.dim = curr.dim;
-		}
+	worklist.emplace_back(root_node_idx, 0, median, 1, true);
+	worklist.emplace_back(root_node_idx, median+1, N, 1, false);
 
-		sort(kdnodes.begin()+curr.kd_lo_idx, kdnodes.begin()+curr.kd_hi_idx, CompareNodes(curr.dim));
-		int med_idx = curr.kd_lo_idx + (curr.kd_hi_idx-curr.kd_lo_idx)/2;
-		int gnode_idx = kdnodes[med_idx].idx;
-		kdtree.addEdge(gnodes[curr.gnode_parent_idx], gnodes[gnode_idx]);
-		KDNode& n = kdtree.getData(gnodes[gnode_idx]);
-		n.isLeftChild = curr.isLeftChild;
-		n.dim = curr.dim;
-		worklist.emplace_back(kdnodes[med_idx].idx, curr.kd_lo_idx, med_idx, (curr.dim+1)%D, true, curr.kdnodes, curr.tree_ptr, curr.gnodes);
-		worklist.emplace_back(kdnodes[med_idx].idx, med_idx+1, curr.kd_hi_idx, (curr.dim+1)%D, false, curr.kdnodes, curr.tree_ptr, curr.gnodes);
-	}
+	// Galoized:
+	Galois::for_each(worklist.begin(), worklist.end(), P_addTreeEdge(kdnodes, kdtree, gnodes, D));
+
 	clock_t tree_end = clock();
 	double tree_time = ((double) (tree_end - tree_start)) / CLOCKS_PER_SEC;
 	printf("time to build tree: %f\n", tree_time);
 
 	// test tree:
-//	KDNode& root_post = kdtree.getData(gnodes[root_node_idx]);
-//	printf("root node = %d\n", root_post.idx);
-//	for (int i = 0; i < D; ++i) {
-//			cout << root_post.pt[i] << " ";
-//	}
-//	cout << endl;
-//
-//	for (auto edge : kdtree.out_edges(gnodes[root_node_idx])) {
-//		GNode dest = kdtree.getEdgeDst(edge);
-//		KDNode& dest_kd = kdtree.getData(dest);
-//		if (dest_kd.isLeftChild) { printf("root's left child"); }
-//		else { printf("root's right child"); }
-//		printf("= %d\n", dest_kd.idx);
-//		for (int i = 0; i < D; ++i) {
-//			cout << dest_kd.pt[i] << " ";
-//		}
-//		cout << endl;
-//	}
+	KDNode& root_post = kdtree.getData(gnodes[root_node_idx]);
+	printf("root node = %d\n", root_post.idx);
+	for (int i = 0; i < D; ++i) {
+			cout << root_post.pt[i] << " ";
+	}
+	cout << endl;
+
+	for (auto edge : kdtree.out_edges(gnodes[root_node_idx])) {
+		GNode dest = kdtree.getEdgeDst(edge);
+		KDNode& dest_kd = kdtree.getData(dest);
+		if (dest_kd.isLeftChild) { printf("root's left child"); }
+		else { printf("root's right child"); }
+		printf("= %d\n", dest_kd.idx);
+		for (int i = 0; i < D; ++i) {
+			cout << dest_kd.pt[i] << " ";
+		}
+		cout << endl;
+	}
 
 	free(data);
 	free(gnodes);
