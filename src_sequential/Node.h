@@ -8,6 +8,8 @@
 #ifndef NODE_H_
 #define NODE_H_
 
+using namespace std;
+
 template <size_t N, typename ElemType> class Node {
 public:
 	Node();
@@ -33,6 +35,8 @@ private:
 	Node* left;
 	Node* right;
 };
+
+/* * * * * Implementation Below This Point. * * * * */
 
 template <size_t N, typename ElemType> Node<N, ElemType>::Node() {
 	val = 0;

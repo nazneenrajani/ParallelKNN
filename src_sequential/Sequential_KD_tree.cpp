@@ -19,12 +19,12 @@
 using namespace std;
 
 // Frey: data/frey.dat
-//#define D 560
-//#define N 1965
+#define D 560
+#define N 1965
 
 // Mnist-test: data/mnist-test.dat
-#define D 784
-#define N 10000
+//#define D 784
+//#define N 10000
 
 /* data in file was stored in binary format. Source: Chen */
 bool read_data_from_file(double **data, char *filename)
@@ -89,35 +89,12 @@ int main(int argc, char **argv) {
 	double points_time = ((double) (points_end - points_start)) / CLOCKS_PER_SEC;
 	printf("time to convert to point array: %.4f\n", points_time);
 
-	// Construct kd tree one point at a time:
-	clock_t tree_start = clock();
-	KDTree<D, int> kd;
-  for (int i = 0; i < N; ++i) {
-  	kd.insert(points[i], i);
-  }
-	clock_t tree_end = clock();
-	double tree_time = ((double) (tree_end - tree_start)) / CLOCKS_PER_SEC;
-	printf("time to build kd tree one point at a time: %.4f\n", tree_time);
-
 	// Construct kd tree with all points at once:
-	tree_start = clock();
+	double tree_start = clock();
 	KDTree<D, int> kd_all(points, N);
-	tree_end = clock();
-	tree_time = ((double) (tree_end - tree_start)) / CLOCKS_PER_SEC;
+	double tree_end = clock();
+	double tree_time = ((double) (tree_end - tree_start)) / CLOCKS_PER_SEC;
 	printf("time to build kd tree with all points at once: %.4f\n", tree_time);
-
-	// Build kNN graph:
-	// from tree kd:
-//	int** kNN_graph;
-//	kNN_graph = (int**) malloc(N*sizeof(int*));
-//	for (int i = 0; i < N; ++i) {
-//		kNN_graph[i] = (int*) malloc(k*sizeof(int));
-//	}
-//	clock_t graph_start = clock();
-//	kd.kNN_Graph(k, kNN_graph);
-//	clock_t graph_end = clock();
-//	double graph_time = ((double) (graph_end - graph_start)) / CLOCKS_PER_SEC;
-//	printf("time to build kNN graph from tree kd: %.4f\n", graph_time);
 
 	// from tree kd_all:
 	int** kNN_graph_all;
@@ -140,6 +117,7 @@ int main(int argc, char **argv) {
 	for (int i = 0; i < k; ++i) {
 		cout << kNN_graph_all[1][i]+1 << " ";
 	}
+	cout << endl;
 
 	free(data);
 	free(points);

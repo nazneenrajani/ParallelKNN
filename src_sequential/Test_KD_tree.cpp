@@ -34,7 +34,7 @@ using namespace std;
 #define MutatingKDTreeTestEnabled       0
 #define ThrowingKDTreeTestEnabled       0
   
-#define NearestNeighborTestEnabled      1 // Step two checks
+#define NearestNeighborTestEnabled      0 // Step two checks
 #define MoreNearestNeighborTestEnabled  0
 
 #define BasicCopyTestEnabled            0 // Step three checks

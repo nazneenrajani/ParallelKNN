@@ -13,18 +13,26 @@
 #define KDTree_Included
 
 #include "Point.h"
-#include "BoundedPQueue.h"
+//#include "BoundedPQueue.h"
 #include "Node.h"
 #include <stdexcept>
 #include <cmath>
 #include <map>
 #include <vector>
+#include <queue>
 #include <algorithm>
 #include <string>
 using namespace std;
 
 template <size_t N, typename ElemType> class KDTree {
 public:
+	class CompareDist {
+	public:
+		bool operator() (const pair<int, double>& lhs, const pair<int, double>& rhs) const {
+			if (lhs.second < rhs.second) { return true; }
+			return false;
+		}
+	};
 	/* Constructor: KDTree();
 	 * Usage: KDTree myTree;
 	 * ----------------------------------------------------
@@ -32,7 +40,7 @@ public:
 	 */
 	KDTree(); // done
 	void build_subtree(Node<N, ElemType>* parent, string child, vector<Node<N, ElemType>* >& nodes, int start_idx, int end_idx, int dim);
-	KDTree(Point<N>* points, size_t n_items);
+	KDTree(Point<N>* points, int n_items);
 
 	/* Destructor: ~KDTree()
 	 * Usage: (implicit)
@@ -118,15 +126,11 @@ public:
 	 * value associated with those points.  In the event of
 	 * a tie, one of the most frequent value will be chosen.
 	 */
-	void search_subtree(BoundedPQueue<const Node<N, ElemType>*>& bpq, const Node<N, ElemType>* curr, const Point<N>& key, int level) const; // done
-	ElemType kNNValue(const Point<N>& key, size_t k) const; // done
-	vector<const Node<N, ElemType>*> get_kNN(const Point<N>& key, size_t k) const;
-	void kNN_Graph(size_t k, ElemType** neighbors) const;
-	void kNN_Graph_recursive(size_t k, ElemType** neighbors, Node<N, ElemType>* node) const;
-
-//	void kNN_Graph(size_t k, const Node<N, ElemType>*** neighbors, Point<N>* points, int num_points) const;
-//	vector<const Node<N, ElemType>*> get_kNN_inplace(const Point<N>& key, size_t k, const Node<N, ElemType>** neighbors) const;
-//	void kNN_Graph_recursive(size_t k, const Node<N, ElemType>*** neighbors, Node<N, ElemType>* node) const;
+	void search_subtree(priority_queue<pair<int, double>, vector<pair<int, double> >, CompareDist>& pq, const Node<N, ElemType>* curr, const Point<N>& key, int level, int k) const; // done
+	ElemType kNNValue(const Point<N>& key, int k) const; // done
+	vector<const Node<N, ElemType>*> get_kNN(const Point<N>& key, int k) const;
+	void kNN_Graph(int k, ElemType** neighbors) const;
+	void kNN_Graph_recursive(int k, ElemType** neighbors, Node<N, ElemType>* node) const;
 
 private:
   Node<N, ElemType>* root;
@@ -134,7 +138,7 @@ private:
   Node<N, ElemType>* findNode(const Point<N>& pt) const; // returns a reference to the point if found; else returns NULL
 };
 
-/* * * * * Implementation Below This Point * * * * */
+/* * * * * Implementation Below This Point. * * * * */
 
 template <size_t N, typename ElemType> KDTree<N, ElemType>::KDTree() {
   n_items = 0;
@@ -151,10 +155,6 @@ struct CompareNodes {
 	}
 };
 
-//template<size_t dim, size_t N, typename ElemType> bool compare_nodes(Node<N, ElemType>* i, Node<N, ElemType>* j) {
-//	return (i->getPoint()[dim] < j->getPoint()[dim]);
-//}
-
 template<size_t N, typename ElemType> void KDTree<N, ElemType>::build_subtree(Node<N, ElemType>* parent, string child, vector<Node<N, ElemType>* >& nodes, int start_idx, int end_idx, int dim) {
 	// base cases:
 	if (end_idx == start_idx) { return; }
@@ -170,21 +170,20 @@ template<size_t N, typename ElemType> void KDTree<N, ElemType>::build_subtree(No
 	}
 
 	sort(nodes.begin()+start_idx, nodes.begin()+end_idx, CompareNodes<N, ElemType>(dim));
-	int median = start_idx + (end_idx-start_idx)/2;
+	int med_idx = start_idx + (end_idx-start_idx)/2;
 	if (child == "left") {
-		parent->setLeftChild(nodes[median]);
-		build_subtree(parent->getLeftChild(), "left", nodes, start_idx, median, dim+1);
-		build_subtree(parent->getLeftChild(), "right", nodes, median+1, end_idx, dim+1);
+		parent->setLeftChild(nodes[med_idx]);
+		build_subtree(parent->getLeftChild(), "left", nodes, start_idx, med_idx, (dim+1)%N);
+		build_subtree(parent->getLeftChild(), "right", nodes, med_idx+1, end_idx, (dim+1)%N);
 	}
 	else if (child == "right") {
-		parent->setRightChild(nodes[median]);
-		build_subtree(parent->getRightChild(), "left", nodes, start_idx, median, dim+1);
-		build_subtree(parent->getRightChild(), "right", nodes, median+1, end_idx, dim+1);
+		parent->setRightChild(nodes[med_idx]);
+		build_subtree(parent->getRightChild(), "left", nodes, start_idx, med_idx, (dim+1)%N);
+		build_subtree(parent->getRightChild(), "right", nodes, med_idx+1, end_idx, (dim+1)%N);
 	}
-
 }
 
-template <size_t N, typename ElemType> KDTree<N, ElemType>::KDTree(Point<N>* points, size_t n_items) {
+template <size_t N, typename ElemType> KDTree<N, ElemType>::KDTree(Point<N>* points, int n_items) {
   this->n_items = n_items;
   // Make vector of nodes out of points
   vector<Node<N, ElemType>* > nodes;
@@ -195,12 +194,12 @@ template <size_t N, typename ElemType> KDTree<N, ElemType>::KDTree(Point<N>* poi
 
   // sort points on first dimension, get median and assign it as root
   sort(nodes.begin(), nodes.end(), CompareNodes<N, ElemType>(0));
-  root = nodes[n_items/2];
+  int med_idx = n_items/2;
+  root = nodes[med_idx];
 
   // recursively add left and right children until all points are in tree
-  build_subtree(root, "left", nodes, 0, n_items/2, 1);
-  build_subtree(root, "right", nodes, n_items/2+1, n_items, 1);
-
+  build_subtree(root, "left", nodes, 0, med_idx, 1);
+  build_subtree(root, "right", nodes, med_idx+1, n_items, 1);
 }
 
 template <size_t N, typename ElemType> KDTree<N, ElemType>::KDTree(const KDTree& other) {
@@ -298,7 +297,6 @@ template <size_t N, typename ElemType> ElemType& KDTree<N, ElemType>::operator[]
 	else {
 		ElemType* d = new ElemType();
 		this->insert(pt, *d);
-//		return *d;
 		n = findNode(pt);
 		return n->getVal();
 	}
@@ -320,111 +318,53 @@ template <size_t N, typename ElemType> const ElemType& KDTree<N, ElemType>::at(c
 	return n->getVal();
 }
 
-template <size_t N, typename ElemType> void KDTree<N, ElemType>::search_subtree(BoundedPQueue<const Node<N, ElemType>*>& bpq, const Node<N, ElemType>* curr, const Point<N>& key, int level) const {
-	if (curr == NULL) { return; }
+template <size_t N, typename ElemType> void KDTree<N, ElemType>::search_subtree(priority_queue<pair<int, double>, vector<pair<int, double> >, CompareDist>& pq, const Node<N, ElemType>* curr, const Point<N>& key, int level, int k) const {
+	if (curr == NULL) {
+		return;
+	}
 	double dist = Distance(curr->getPoint(), key);
-	bpq.enqueue(curr, dist);
-	char child_searched = 'l';
+	// if pq has less than k elems in it, push curr on
+	if (pq.size() < k) {
+		pq.emplace((make_pair(curr->getVal(), dist)));
+	}
+	// otherwise, only push on if distance of curr is less than distance of max elem, and then pop max elem
+	else if (dist < pq.top().second) {
+		pq.pop();
+		pq.emplace((make_pair(curr->getVal(), dist)));
+	}
+	bool left_child_searched = true;
 	if (key[level] < curr->getPoint()[level]) {
-		search_subtree(bpq, curr->getLeftChild(), key, (level+1)%curr->getPoint().size());
+		search_subtree(pq, curr->getLeftChild(), key, (level+1)%N, k);
 	}
 	else {
-		search_subtree(bpq, curr->getRightChild(), key, (level+1)%curr->getPoint().size());
-		child_searched = 'r';
+		search_subtree(pq, curr->getRightChild(), key, (level+1)%N, k);
+		left_child_searched = false;
 	}
-	if ( (bpq.size() < bpq.maxSize()) || (fabs(key[level] - curr->getPoint()[level]) < bpq.worst()) ) {
-		if (child_searched == 'l') {
-			search_subtree(bpq, curr->getRightChild(), key, (level+1)%curr->getPoint().size());
+	if ( (pq.size() < k) || (fabs(key[level] - curr->getPoint()[level]) < pq.top().second) ) {
+		if (left_child_searched) {
+			search_subtree(pq, curr->getRightChild(), key, (level+1)%N, k);
 		}
 		else {
-			search_subtree(bpq, curr->getLeftChild(), key, (level+1)%curr->getPoint().size());
+			search_subtree(pq, curr->getLeftChild(), key, (level+1)%N, k);
 		}
 	}
 }
 
-template <size_t N, typename ElemType> ElemType KDTree<N, ElemType>::kNNValue(const Point<N>& key, size_t k) const {
-	BoundedPQueue<const Node<N, ElemType>*> bpq(k);
-	search_subtree(bpq, root, key, 0);
-
-	map<ElemType, int> labels;
-	while (!bpq.empty()) {
-		const Node<N, ElemType>* node = bpq.dequeueMin();
-		labels[node->getVal()] = labels[node->getVal()] + 1;
-	}
-	ElemType best_label;
-	int max_count;
-	for (typename map<ElemType, int>::iterator it = labels.begin(); it != labels.end(); ++it) {
-		if (it->second > max_count) {
-			max_count = it->second;
-			best_label = it->first;
-		}
-	}
-	return best_label;
-}
-
-template <size_t N, typename ElemType> vector<const Node<N, ElemType>*> KDTree<N, ElemType>::get_kNN(const Point<N>& key, size_t k) const {
-	BoundedPQueue<const Node<N, ElemType>*> bpq(k);
-	search_subtree(bpq, root, key, 0);
-
-	vector<const Node<N, ElemType>*> neighbors;
-	neighbors.reserve(k);
-	while (!bpq.empty()) {
-		neighbors.push_back(bpq.dequeueMin());
-	}
-	return neighbors;
-}
-
-// Original:
-template <size_t N, typename ElemType> void KDTree<N, ElemType>::kNN_Graph_recursive(size_t k, ElemType** neighbors, Node<N, ElemType>* node) const {
+template <size_t N, typename ElemType> void KDTree<N, ElemType>::kNN_Graph_recursive(int k, ElemType** neighbors, Node<N, ElemType>* node) const {
 	if (node == NULL) { return; }
-	BoundedPQueue<const Node<N, ElemType>*> bpq(k);
-	search_subtree(bpq, root, node->getPoint(), 0);
-	for (size_t i = 0; i < k; ++i) {
-			neighbors[node->getVal()][i] = bpq.dequeueMin()->getVal();
+	priority_queue<pair<int, double>, vector<pair<int, double> >, CompareDist> pq;
+	search_subtree(pq, root, node->getPoint(), 0, k);
+	for (int i = k-1; i >= 0; --i) {
+		neighbors[node->getVal()][i] = pq.top().first;
+		pq.pop();
 	}
 	kNN_Graph_recursive(k, neighbors, node->getLeftChild());
 	kNN_Graph_recursive(k, neighbors, node->getRightChild());
 }
 
-template <size_t N, typename ElemType> void KDTree<N, ElemType>::kNN_Graph(size_t k, ElemType** neighbors) const {
+template <size_t N, typename ElemType> void KDTree<N, ElemType>::kNN_Graph(int k, ElemType** neighbors) const {
 	kNN_Graph_recursive(k, neighbors, root);
-	cout << "finished with kNN_Graph" << endl;
 	return;
 }
-
-// Using 2d array of pointers to node instead of node vals
-//template <size_t N, typename ElemType> void KDTree<N, ElemType>::kNN_Graph_recursive(size_t k, const Node<N, ElemType>*** neighbors, Node<N, ElemType>* node) const {
-//	if (node == NULL) { return; }
-//	BoundedPQueue<const Node<N, ElemType>*> bpq(k);
-//	search_subtree(bpq, root, node->getPoint(), 0);
-//	ElemType node_idx = node->getVal();
-//	for (size_t i = 0; i < k; ++i) {
-//			neighbors[node_idx][i] = bpq.dequeueMin();
-//	}
-//	kNN_Graph_recursive(k, neighbors, node->getLeftChild());
-//	kNN_Graph_recursive(k, neighbors, node->getRightChild());
-//}
-//
-//template <size_t N, typename ElemType> void KDTree<N, ElemType>::kNN_Graph(size_t k, const Node<N, ElemType>*** neighbors) const {
-//	kNN_Graph_recursive(k, neighbors, root);
-////	cout << "finished with kNN_Graph" << endl;
-//	return;
-//}
-
-// Looking for set of points, not recursively traversing kd tree
-//template <size_t N, typename ElemType> vector<const Node<N, ElemType>*> KDTree<N, ElemType>::get_kNN_inplace(const Point<N>& key, size_t k, const Node<N, ElemType>** neighbors) const {
-//	BoundedPQueue<const Node<N, ElemType>*> bpq(k);
-//	search_subtree(bpq, root, key, 0);
-//	for (size_t i = 0; i < k; ++i) {
-//			neighbors[i] = bpq.dequeueMin();
-//	}
-//}
-//
-//template <size_t N, typename ElemType> void KDTree<N, ElemType>::kNN_Graph(size_t k, const Node<N, ElemType>*** neighbors, Point<N>* points, int num_points) const {
-//	for (int i = 0; i < num_points; ++i) {
-//		get_kNN_inplace(points[i], k, neighbors[i]);
-//	}
-//	return;
-//}
 
 #endif

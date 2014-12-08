@@ -75,6 +75,7 @@ template <size_t N> double Distance(const Point<N>& one, const Point<N>& two);
 template <size_t N> bool operator== (const Point<N>& one, const Point<N>& two);
 template <size_t N> bool operator!= (const Point<N>& one, const Point<N>& two);
 
+
 /* * * * * Implementation Below This Point. * * * * */
 
 #include <algorithm>
