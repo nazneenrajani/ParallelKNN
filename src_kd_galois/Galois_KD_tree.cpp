@@ -118,6 +118,7 @@ bool read_data_from_file(double **data, char *filename, int N, int D) {
 }
 
 int main(int argc, char **argv) {
+	Galois::StatManager sm;
 	char* datafile = argv[1];
 	cout << "Results for " << datafile << "data:" << endl;
 	int D = atoi(argv[2]);
@@ -125,7 +126,8 @@ int main(int argc, char **argv) {
 	int k = atoi(argv[4]);
 
 	/* Read in data: */
-	clock_t data_read_start = clock();
+	Galois::StatTimer readDataTime("readData");
+	readDataTime.start();
 	double** data;
 	data = (double**) malloc(N*sizeof(double *));
 	for (int i = 0; i < N; ++i) {
@@ -135,49 +137,31 @@ int main(int argc, char **argv) {
 		printf("error reading data!\n");
 		exit(1);
 	}
-	clock_t data_read_end = clock();
-	double data_read_time = ((double) (data_read_end - data_read_start)) / CLOCKS_PER_SEC;
-	printf("time to read data: %f\n", data_read_time);
+	readDataTime.stop();
 
-	Galois::setActiveThreads(1);
+	Galois::setActiveThreads(16);
+
+	Galois::StatTimer totalTime("totalTime");
+	totalTime.start();
 
 	/* Convert to vector of KDNodes and insert into graph: */
+	Galois::StatTimer initTree("initializeTree");
+	initTree.start();
 	Graph kdtree;
 	vector<KDNode> kdnodes; // vector of kdtree nodes, NOT in indexed order (starts in order, but will be resorted)
 	kdnodes.reserve(N);
 	GNode* gnodes; // array of graph nodes, IN indexed order: gnodes[0] corresponds to the first data point in the file
 	gnodes = (GNode*) malloc(N*sizeof(GNode));
-	clock_t points_start = clock();
-	clock_t tree_start = clock();
 	for (int i = 0; i < N; ++i) {
 		kdnodes.emplace_back(data[i], i);
 		gnodes[i] = kdtree.createNode(kdnodes[i]);
 		kdtree.addNode(gnodes[i]);
 	}
-	clock_t points_end = clock();
-	double points_time = ((double) (points_end - points_start)) / CLOCKS_PER_SEC;
-	printf("time to fill graph with data points (no edges): %f\n", points_time);
-
-	// test graph...
-		KDNode& node_last = kdtree.getData(gnodes[N-1]);
-		for (int i = 0; i < D; ++i) {
-//			cout << node_last.pt[i] << " ";
-			if (node_last.pt[i] != data[N-1][i]) {
-				cout << node_last.pt[i] << " != " << data[N-1][i] << endl;
-			}
-		}
-		cout << endl;
-		KDNode& random = kdtree.getData(gnodes[378]);
-		for (int i = 0; i < D; ++i) {
-//			cout << random.pt[i] << " ";
-			if (random.pt[i] != data[378][i]) {
-				cout << random.pt[i] << " != " << data[378][i] << endl;
-			}
-		}
-		cout << endl;
+	initTree.stop();
 
 	/* Build KDTree */
-//	clock_t tree_start = clock();
+	Galois::StatTimer buildTree("buildTree");
+	buildTree.start();
 	sort(kdnodes.begin(), kdnodes.end(), CompareNodes(0));
 	int median = N/2;
 	int root_node_idx = kdnodes[median].idx; // corresponds to the root's index in gnodes: gnodes[root_node_idx]
@@ -186,34 +170,49 @@ int main(int argc, char **argv) {
 	vector<P_buildTree> worklist;
 	worklist.emplace_back(root_node_idx, 0, median, 1, true);
 	worklist.emplace_back(root_node_idx, median+1, N, 1, false);
-
-	// Galoized:
 	Galois::for_each(worklist.begin(), worklist.end(), P_addTreeEdge(kdnodes, kdtree, gnodes, D));
 
-	clock_t tree_end = clock();
-	double tree_time = ((double) (tree_end - tree_start)) / CLOCKS_PER_SEC;
-	printf("time to build tree: %f\n", tree_time);
-
-	// test tree:
-	KDNode& root_post = kdtree.getData(gnodes[root_node_idx]);
-	printf("root node = %d\n", root_post.idx);
-	for (int i = 0; i < D; ++i) {
-			cout << root_post.pt[i] << " ";
-	}
-	cout << endl;
-
-	for (auto edge : kdtree.out_edges(gnodes[root_node_idx])) {
-		GNode dest = kdtree.getEdgeDst(edge);
-		KDNode& dest_kd = kdtree.getData(dest);
-		if (dest_kd.isLeftChild) { printf("root's left child"); }
-		else { printf("root's right child"); }
-		printf("= %d\n", dest_kd.idx);
-		for (int i = 0; i < D; ++i) {
-			cout << dest_kd.pt[i] << " ";
-		}
-		cout << endl;
-	}
+	buildTree.stop();
+	totalTime.stop();
 
 	free(data);
 	free(gnodes);
 }
+
+//	// test graph...
+//		KDNode& node_last = kdtree.getData(gnodes[N-1]);
+//		for (int i = 0; i < D; ++i) {
+////			cout << node_last.pt[i] << " ";
+//			if (node_last.pt[i] != data[N-1][i]) {
+//				cout << node_last.pt[i] << " != " << data[N-1][i] << endl;
+//			}
+//		}
+//		cout << endl;
+//		KDNode& random = kdtree.getData(gnodes[378]);
+//		for (int i = 0; i < D; ++i) {
+////			cout << random.pt[i] << " ";
+//			if (random.pt[i] != data[378][i]) {
+//				cout << random.pt[i] << " != " << data[378][i] << endl;
+//			}
+//		}
+//		cout << endl;
+
+//	// test tree:
+//	KDNode& root_post = kdtree.getData(gnodes[root_node_idx]);
+//	printf("root node = %d\n", root_post.idx);
+//	for (int i = 0; i < D; ++i) {
+//			cout << root_post.pt[i] << " ";
+//	}
+//	cout << endl;
+//
+//	for (auto edge : kdtree.out_edges(gnodes[root_node_idx])) {
+//		GNode dest = kdtree.getEdgeDst(edge);
+//		KDNode& dest_kd = kdtree.getData(dest);
+//		if (dest_kd.isLeftChild) { printf("root's left child"); }
+//		else { printf("root's right child"); }
+//		printf("= %d\n", dest_kd.idx);
+//		for (int i = 0; i < D; ++i) {
+//			cout << dest_kd.pt[i] << " ";
+//		}
+//		cout << endl;
+//	}
