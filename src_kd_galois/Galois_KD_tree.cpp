@@ -1,7 +1,24 @@
-//============================================================================
-// Name        : Galois_KD_tree.cpp
-// Author      : Kathryn McArdle
-//============================================================================
+/********************************************************************
+ * File: Galois_KD_tree.cpp
+ * Author: Kate McArdle
+ *
+ * A file to find the k nearest neighbors of an input graph, using Galois.
+ *
+ * To use:
+ * 	- Initial setup:
+ * 		- Create a directory (eg 'kdtree') in the 'apps' directory found in your Galois directory (eg Galois-2.2.1/apps/kdtree)
+ * 		- Put this file in that new directory
+ * 		- Create a file CMakeLists.txt in that new directory. If your app directory is 'kdtree', the CMakeLists.txt file would look like:
+ * 				if(USE_EXP)
+  				include_directories(../../exp/apps/kdtree .)
+					endif()
+					app(kdtree Galois_KD_tree.cpp)
+ * 		- Add your app directory to the CMakeLists.txt file in the 'apps' directory. If your app directory is 'kdtree', add this line:
+ * 				add_subdirectory(kdtree)
+ * 		- In Galois/build/default, issue a make command. (In the future, if you modify this file and wish to rebuild it, issue: make -C apps/kdtree)
+ * 	- Run on data:
+ * 		Galois/build/default/apps/kdtree/kdtree <path to data> n_dimensions n_data_points k n_threads
+ */
 
 #include <iostream>
 #include <cstdlib>
@@ -98,7 +115,7 @@ struct P_addTreeEdge {
 
 class CompareDist {
 public:
-	bool operator() (const pair<TreeNode&, double>& lhs, const pair<TreeNode&, double>& rhs) const {
+	bool operator() (const pair<int, double>& lhs, const pair<int, double>& rhs) const {
 		if (lhs.second < rhs.second) { return true; }
 		return false;
 	}
@@ -120,36 +137,29 @@ struct P_knn {
 		this->n_dims = D;
 	}
 
-	double getDistance(const KNNNode& k, TreeNode& c) {
-//		printf("entering getDistance...\n");
+	double getDistance(const KDNode& key, KDNode& curr) {
 		double dist = 0.0;
-		KDNode& key = knnGraph.getData(k);
-		KDNode& curr = kdtree.getData(c);
 		for (int i = 0; i < n_dims; ++i) {
 			dist += (key.pt[i] - curr.pt[i]) * (key.pt[i] - curr.pt[i]);
 		}
-//		printf("leaving getDistance...\n");
 		return sqrt(dist);
 	}
 
-	void search_subtree(priority_queue<pair<TreeNode&, double>, vector<pair<TreeNode&, double> >, CompareDist>& pq, TreeNode& curr, const KNNNode& key, int level) {
-//		printf("level = %d\n", level);
-		double dist = getDistance(key, curr);
+	void search_subtree(priority_queue<pair<int, double>, vector<pair<int, double> >, CompareDist>& pq, TreeNode& curr, const KNNNode& key, int level) {
+		const KDNode& key_kd = knnGraph.getData(key);
+		KDNode& curr_kd = kdtree.getData(curr);
+		double dist = getDistance(key_kd, curr_kd);
 		// if pq has less than k elems in it, push curr on:
 		if (pq.size() < k) {
-			pair<TreeNode&, double> p(curr, dist);
-			pq.push(p);
-//			pq.emplace((make_pair(curr, dist)));
+			pq.emplace((make_pair(curr_kd.idx, dist)));
 		}
 		// otherwise, only push on if distance of curr is less than distance of max elem, and pop max elem:
 		else if (dist < pq.top().second) {
 			pq.pop();
-			pair<TreeNode&, double> p(curr, dist);
-			pq.push(p);
-//			pq.emplace((make_pair(curr, dist)));
+			pq.emplace((make_pair(curr_kd.idx, dist)));
 		}
 		bool left_child_searched = true;
-		if (knnGraph.getData(key).pt[level] < kdtree.getData(curr).pt[level]) {
+		if (key_kd.pt[level] < curr_kd.pt[level]) {
 			// check to see if curr has a left child. if it does, search_subtree on that child
 			for (KDTree::edge_iterator edge : kdtree.out_edges(curr)) {
 				TreeNode dest = kdtree.getEdgeDst(edge);
@@ -170,7 +180,7 @@ struct P_knn {
 		}
 
 		// as we walk back up the tree:
-		if ( (pq.size() < k) || (fabs(knnGraph.getData(key).pt[level] - kdtree.getData(curr).pt[level]) < pq.top().second) ) {
+		if ( (pq.size() < k) || (fabs(key_kd.pt[level] - curr_kd.pt[level]) < pq.top().second) ) {
 			if (left_child_searched) { // search right subtree
 				for (KDTree::edge_iterator edge : kdtree.out_edges(curr)) {
 					TreeNode dest = kdtree.getEdgeDst(edge);
@@ -188,36 +198,17 @@ struct P_knn {
 				}
 			}
 		}
-
 	}
 
 	void operator() (const KNNNode& node) {
-		priority_queue<pair<TreeNode&, double>, vector<pair<TreeNode&, double> >, CompareDist> pq;
-		printf("starting to search subtree\n");
+		priority_queue<pair<int, double>, vector<pair<int, double> >, CompareDist> pq;
 		search_subtree(pq, kdroot, node, 0);
-		printf("finished searching subtree\n");
-		printf("size of pq = %d\n", pq.size());
 		for (int i = 0; i < k; ++i) {
-			printf("i = %d\n", i);
-			TreeNode& kd_dest = pq.top().first;
-			printf("got kd_dest from pq\n");
-			KDNode& kd_node_dest = kdtree.getData(kd_dest);
-			printf("got kd node from kd_dest\n");
-//			for (int j = 0; j < n_dims; ++j) {
-//				cout << kd_node_dest.pt[j] << " ";
-//			}
-//			cout << endl;
-			int dest_idx = kd_node_dest.idx;
-			printf("dest_idx = %d\n", dest_idx);
-//			KNNNode& knn_dest = knnNodes[dest_idx];
-//			printf("accessed knnNodes[dest_idx]\n");
+			int dest_idx = pq.top().first;
+			KNNNode& knn_dest = knnNodes[dest_idx];
 			double dist = pq.top().second;
-			printf("accessed dist\n");
 			pq.pop();
-			printf("popped from pq\n");
-//			knnGraph.addEdge(node, knn_dest);
-//			knnGraph.getEdgeData(knnGraph.addEdge(node, knn_dest)) = dist;
-//			printf("added edge with value\n");
+			knnGraph.getEdgeData(knnGraph.addEdge(node, knn_dest)) = dist;
 		}
 	}
 };
@@ -253,9 +244,9 @@ int main(int argc, char **argv) {
 	int D = atoi(argv[2]);
 	int N = atoi(argv[3]);
 	int k = atoi(argv[4]);
+	int n_threads = atoi(argv[5]);
 
 	/* Read in data: */
-	printf("Reading in data...\n");
 	Galois::StatTimer readDataTime("readData");
 	readDataTime.start();
 	double** data;
@@ -269,13 +260,12 @@ int main(int argc, char **argv) {
 	}
 	readDataTime.stop();
 
-	Galois::setActiveThreads(1);
+	Galois::setActiveThreads(n_threads);
 
 	Galois::StatTimer totalTime("totalTime");
 	totalTime.start();
 
 	/* Convert to vector of KDNodes and insert into graph: */
-	printf("building tree...\n");
 	Galois::StatTimer buildTree("buildTree");
 	buildTree.start();
 	KDTree kdtree;
@@ -302,7 +292,6 @@ int main(int argc, char **argv) {
 	buildTree.stop();
 
 	/* Build kNN Graph */
-	printf("building knn graph...\n");
 	Galois::StatTimer knnTime("knnTime");
 	knnTime.start();
 	KNNGraph knnGraph;
@@ -310,17 +299,29 @@ int main(int argc, char **argv) {
 	gnodes_knn = (KNNNode*) malloc(N*sizeof(KNNNode));
 	for (int i = 0; i < N; ++i) {
 		int idx = kdnodes[i].idx;
-		if (idx == 2501) {
-			printf("idx = %d\n", idx);
-		}
 		gnodes_knn[idx] = knnGraph.createNode(kdnodes[i]);
 		knnGraph.addNode(gnodes_knn[idx]);
 	}
-	printf("entering galois do all...\n");
 	Galois::do_all(knnGraph.begin(), knnGraph.end(), P_knn(k, D, knnGraph, gnodes_knn, kdtree, gnodes[root_node_idx]));
 	knnTime.stop();
-
 	totalTime.stop();
+
+	// check results:
+	printf("neighbors for node 1: ");
+	for (auto edge : knnGraph.out_edges(gnodes_knn[0])) {
+		KNNNode dest = knnGraph.getEdgeDst(edge);
+		KDNode& dest_kd = knnGraph.getData(dest);
+		cout << dest_kd.idx+1 << " ";
+	}
+	cout << endl;
+
+	printf("neighbors for node 2: ");
+	for (auto edge : knnGraph.out_edges(gnodes_knn[1])) {
+		KNNNode dest = knnGraph.getEdgeDst(edge);
+		KDNode& dest_kd = knnGraph.getData(dest);
+		cout << dest_kd.idx+1 << " ";
+	}
+	cout << endl;
 
 	free(data);
 	free(gnodes);
