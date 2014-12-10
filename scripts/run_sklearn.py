@@ -26,5 +26,5 @@ def get_knn_graph(data_file, k, d, N, alg):
   return knn_graph
 
 if __name__ == '__main__':
-  knn_graph = get_knn_graph(sys.argv[1], int(sys.argv[2]), int(sys.argv[3]), int(sys.argv[4]), argv[5])
+  knn_graph = get_knn_graph(sys.argv[1], int(sys.argv[2]), int(sys.argv[3]), int(sys.argv[4]), sys.argv[5])
   # knn_graph.tofile(sys.argv[6], "\t")
