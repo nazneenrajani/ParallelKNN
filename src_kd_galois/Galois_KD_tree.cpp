@@ -19,6 +19,8 @@
  * 		- In Galois/build/default, issue a make command. (In the future, if you modify this file and wish to rebuild it, issue: make -C apps/kdtree)
  * 	- Run on data:
  * 		Galois/build/default/apps/kdtree/kdtree <path to data> n_dimensions n_data_points k n_threads
+ * 			- Note: this assumes the data file is in a binary double precision format.
+ * 				If it's in another format, see the enum "FileFormat" and make the appropriate change to the read_data call in main.
  */
 
 #include <iostream>
@@ -29,6 +31,10 @@
 #include <queue>
 #include <map>
 #include <cmath>
+// for file reading:
+#include <cstring>
+#include <fstream>
+#include <sstream>
 
 #include "Galois/Galois.h"
 #include "Galois/Graph/FirstGraph.h"
@@ -218,8 +224,8 @@ struct P_knn {
 	}
 };
 
-/* data in file was stored in binary format. Source: Chen */
-bool read_data_from_file(double **data, char *filename, int N, int D) {
+/* data in file stored in binary double precision format. Source: Chen */
+bool read_data_from_binary_double(double **data, char *filename, int N, int D) {
   FILE *fp = NULL;
   if (!(fp = fopen(filename, "rb"))) {
   	cout << filename << " didn't open" << endl;
@@ -228,7 +234,7 @@ bool read_data_from_file(double **data, char *filename, int N, int D) {
 
   int i;
   int num_in, num_total;
-  for (i = 0; i < N; i++)
+  for (i = 0; i < N; ++i)
     {
       num_total = 0;
       while (num_total < D)
@@ -239,6 +245,70 @@ bool read_data_from_file(double **data, char *filename, int N, int D) {
     }
 
   fclose(fp);
+  return true;
+}
+
+/* data in file stored in binary 1-byte uint8 precision format, eg for Tiny Images dataset. */
+bool read_data_from_binary_uint(double **data, char *filename, int N, int D) {
+  FILE *fp = NULL;
+  if (!(fp = fopen(filename, "rb"))) {
+  	cout << filename << " didn't open" << endl;
+  	return false;
+  }
+
+	uint8_t** data_uint;
+	data_uint = (uint8_t**) malloc(N*sizeof(uint8_t *));
+	for (int i = 0; i < N; ++i) {
+		data_uint[i] = (uint8_t*) malloc(D*sizeof(uint8_t));
+	}
+
+  int i;
+  int num_in, num_total;
+  for (i = 0; i < N; ++i) {
+  	num_total = 0;
+  	while (num_total < D) {
+  		num_in = fread(data_uint[i]+num_total, sizeof(uint8_t), D, fp);
+  		num_total += num_in;
+  	}
+  }
+  fclose(fp);
+
+  for (i = 0; i < N; ++i) {
+  	for (int j = 0; j < D; ++j) {
+  		data[i][j] = (double) data[i][j];
+  	}
+  }
+  free(data_uint);
+  return true;
+}
+
+/* data in file stored in libsvm format */
+bool read_data_from_libsvm(double **data, char *filename, int N, int D) {
+	for (int idx = 0; idx < N; ++idx) {
+		for (int dim = 0; dim < D; ++dim) {
+			data[idx][dim] = 0;
+		}
+	}
+
+	ifstream f(filename);
+	string line;
+	int data_idx = 0;
+	while(getline(f, line)) {
+		istringstream iss(line);
+		string label = "";
+		iss >> label;
+		while(iss) {
+			string sub = "";
+			iss >> sub;
+			if(sub.length() == 0) { break; }
+			string feature = sub.substr(0, sub.find(':'));
+			int dim = atoi(feature.c_str()) - 1; // have to decrement to be 0-based
+			string val = sub.substr(sub.find(':')+1, sub.length());
+			data[data_idx][dim] = atof(val.c_str());
+		}
+		++data_idx;
+	}
+	f.close();
   return true;
 }
 
@@ -254,13 +324,31 @@ struct Times {
 	}
 };
 
-double** read_data(char* datafile, int D, int N) {
+enum FileFormat { BINARY_DOUBLE, BINARY_UINT8, LIBSVM };
+
+double** read_data(char* datafile, FileFormat fileformat, int D, int N) {
 	double** data;
 	data = (double**) malloc(N*sizeof(double *));
 	for (int i = 0; i < N; ++i) {
 		data[i] = (double*) malloc(D*sizeof(double));
 	}
-	if (!read_data_from_file(data, datafile, N, D)) {
+
+	bool read_result = false;
+	switch(fileformat) {
+	case BINARY_DOUBLE :
+		read_result = read_data_from_binary_double(data, datafile, N, D);
+		break;
+	case BINARY_UINT8 :
+		read_result = read_data_from_binary_uint(data, datafile, N, D);
+		break;
+	case LIBSVM :
+		read_result = read_data_from_libsvm(data, datafile, N, D);
+		break;
+	default :
+		read_result = false;
+	}
+
+	if (!read_result) {
 		printf("error reading data!\n");
 		exit(1);
 	}
@@ -326,25 +414,32 @@ void run_knn(double** data, int D, int N, int k, int n_threads, Times& times) {
 
 struct Data {
 	char* datafile;
+	FileFormat fileformat;
 	int D;
 	int N;
 	int k;
 
-	Data(char* f, int D, int N, int k) : datafile(f), D(D), N(N), k(k) { }
+	Data(char* f, FileFormat fileformat, int D, int N, int k) : datafile(f), fileformat(fileformat), D(D), N(N), k(k) { }
 };
 
 void measure_performance() {
 	int n_reps = 1;
-//	Data mnist_test("../../../ScalableML/data/mnist-test.dat", 784, 10000, 8);
-	Data mnist_train("../../../ScalableML/data/mnist-train.dat", 784, 60000, 8);
 	vector<Data> datasets;
+//	int n_threads[] = { 1, 4, 8, 16, 32 };
+	int n_threads[] = { 16 };
+
+//	Data mnist_test("../../../ScalableML/data/mnist-test.dat", BINARY_DOUBLE, 784, 10000, 8);
 //	datasets.push_back(mnist_test);
-	datasets.push_back(mnist_train);
-	int n_threads[] = { 1, 4, 8, 16, 32 };
+//	Data mnist_train("../../../ScalableML/data/mnist-train.dat", BINARY_DOUBLE, 784, 60000, 8);
+//	datasets.push_back(mnist_train);
+	Data mnist8m("/scratch/02234/kmcardle/data/mnist8m", LIBSVM, 784, 8100000, 8);
+	datasets.push_back(mnist8m);
+//	Data tinyimgs("/scratch/02234/kmcardle/data/tiny_images.bin", BINARY_UINT8, 3072, 79302017, 8);
+//	datasets.push_back(tinyimgs);
 
 	for (Data dataset : datasets) {
 		cout << "---------- Results for " << dataset.datafile << " data: ----------" << endl;
-		double** data = read_data(dataset.datafile, dataset.D, dataset.N);
+		double** data = read_data(dataset.datafile, dataset.fileformat, dataset.D, dataset.N);
 		for (int t : n_threads) {
 			printf(" +++++ %d Threads +++++\n", t);
 			Times times;
@@ -369,7 +464,7 @@ int main(int argc, char **argv) {
 		int N = atoi(argv[3]);
 		int k = atoi(argv[4]);
 		int n_threads = atoi(argv[5]);
-		double** data = read_data(datafile, D, N);
+		double** data = read_data(datafile, BINARY_DOUBLE, D, N);
 		Times times;
 		run_knn(data, D, N, k, n_threads, times);
 		free(data);
