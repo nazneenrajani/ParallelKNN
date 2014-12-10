@@ -20,6 +20,7 @@
 
 using namespace std;
 
+
 int read_X_from_file(double **X, int n, int D, char *filename);
 
 
@@ -32,6 +33,8 @@ struct datapoint {
     }
 };
 
+vector<datapoint> pts;
+
 struct centroid {
     double *dim; //list of dimensions
 };
@@ -40,10 +43,12 @@ struct ballnode {
     vector<struct datapoint*> data; //list of nodes it owns
     double radius;
     struct centroid *pivot;
-    vector<struct datapoint*> child1;
-    vector<struct datapoint*> child2;
+    struct ballnode* child1;
+    struct ballnode* child2;
+    ballnode(vector<struct datapoint*> data){
+        this -> data = data;
+    }
 };
-
 
 struct balltree {
     int num_points;
@@ -71,13 +76,13 @@ return 0;
 return (timeval.tv_sec - first_timeval.tv_sec) * 1000 + (timeval.tv_usec - first_timeval.tv_usec) / 1000;
 }
 
-pair<double,struct datapoint*> getRadius(const struct centroid& target, vector<datapoint*>& pts, int D) {
+pair<double,struct datapoint*> getRadius(const struct centroid *target, vector<datapoint*>& pts, int D) {
     double radius =0.0;
     struct datapoint *child1;
     for (int k=0; k<pts.size(); k++) {
          double dist = 0.0;
         for (int i = 0; i < D; ++i) {
-            dist += (target.dim[i] - pts[k]->dim[i]) * (target.dim[i] - pts[k]->dim[i]);
+            dist += (target->dim[i] - pts[k]->dim[i]) * (target->dim[i] - pts[k]->dim[i]);
         }
         if(sqrt(dist)>radius){
             radius = sqrt(dist);
@@ -87,13 +92,13 @@ pair<double,struct datapoint*> getRadius(const struct centroid& target, vector<d
     return make_pair(radius,child1);
 }
 
-struct datapoint* getMaxDist(const struct datapoint& target, vector<datapoint*>& pts, int D) {
+struct datapoint* getMaxDist(const struct datapoint *target, vector<datapoint*>& pts, int D) {
     double radius =0.0;
     struct datapoint *child2;
     for (int k=0; k<pts.size(); k++) {
         double dist = 0.0;
         for (int i = 0; i < D; ++i) {
-            dist += (target.dim[i] - pts[k]->dim[i]) * (target.dim[i] - pts[k]->dim[i]);
+            dist += (target->dim[i] - pts[k]->dim[i]) * (target->dim[i] - pts[k]->dim[i]);
         }
         if(sqrt(dist)>radius){
             radius = sqrt(dist);
@@ -103,65 +108,73 @@ struct datapoint* getMaxDist(const struct datapoint& target, vector<datapoint*>&
     return child2;
 }
 
-double getDistance( datapoint& key, datapoint& curr, int D) {
+double getDistance(struct datapoint* key, struct datapoint* curr, int D) {
     double dist = 0.0;
     for (int i = 0; i < D; ++i) {
-        dist += (key.dim[i] - curr.dim[i]) * (key.dim[i] - curr.dim[i]);
+        dist += (key->dim[i] - curr->dim[i]) * (key->dim[i] - curr->dim[i]);
     }
     return sqrt(dist);
 }
 
-void recursive_insert(vector<struct datapoint*> &root_points, int items, int D){
-    struct ballnode *bnode;
-    bnode -> data = root_points;
-    struct centroid *centroid;
+void recursive_insert(struct ballnode *root, int items, int D){
+    struct centroid centroid;
     double dim[D] = {};
     for (int k=0; k<D; k++) {
         for (int i=0; i<items; i++) {
-            dim[k] += root_points.at(i)->dim[k];
+            dim[k] += root->data.at(i)->dim[k];
         }
     }
-    centroid -> dim = dim;
-    bnode->pivot = centroid;
-    pair<double, struct datapoint*> answer = getRadius(*bnode->pivot,bnode->data,D);
-    bnode->radius = answer.first;
-    struct datapoint *child1 = answer.second;
-    struct datapoint *child2 = getMaxDist(*child1,bnode->data,D);
+    centroid.dim = dim;
+    root->pivot = &centroid;
+    //cout<<"done"<<endl;
+    pair<double, struct datapoint*> answer = getRadius(root->pivot,root->data,D);
+    root->radius = answer.first;
+    //cout<<"done"<<endl;
+    struct datapoint *child1_point = answer.second;
+    struct datapoint *child2_point = getMaxDist(child1_point,root->data,D);
+    
+    //cout<<"done"<<endl;
+    
     vector<datapoint*> child1_points;
     vector<datapoint*> child2_points;
-    for (int k=0; k<root_points.size(); k++) {
-        datapoint dt = *root_points.at(k);
-        if(getDistance(*child1,dt,D)<getDistance(*child2,dt,D))
-            child1_points.push_back(&dt);
+    //cout<<"done"<<endl;
+    for (int k=0; k<items; k++) {
+        datapoint *dt = root->data.at(k);
+        if(getDistance(child1_point,dt,D)<getDistance(child2_point,dt,D))
+            child1_points.push_back(dt);
         else
-            child2_points.push_back(&dt);
+            child2_points.push_back(dt);
     }
-    bnode->child1 = child1_points;
-    bnode->child2 = child2_points;
-    if(child1_points.size()>2) //I might change
-        recursive_insert(bnode->child1, child1_points.size(),D); //recursive insert on both childs
+    struct ballnode *child1 = new ballnode(child1_points);
+    struct ballnode *child2 = new ballnode(child2_points);
+    
+    root->child1 = child1;
+    root->child2 = child2;
+
+    if(child1_points.size()>2){ //I might change
+        recursive_insert(root->child1, child1_points.size(),D); //recursive insert on both childs
+    }
     if(child2_points.size()>2) //I might change
-        recursive_insert(bnode->child2, child2_points.size(),D);
+        recursive_insert(root->child2, child2_points.size(),D);
 }
 
 int balltree_insert_all(struct balltree *tree, double **dim_all, int n, int D)
-{   vector<datapoint> pts;
+{
     int j;
     pts.reserve(n);
     for (j=0; j<n; j++) {
-        pts.emplace_back(dim_all[j],j+1);
+        pts.emplace_back(dim_all[j],j);
     }
 
-    struct ballnode *root;
     vector<datapoint*> points;
+    points.reserve(n);
     for (j=0; j<n; j++) {
         points.push_back(&pts.at(j));
     }
 
-    root-> data = points;
-    cout<<"done with centroid"<<endl;
-    struct centroid *centroid;
-    cout<<"done with centroid"<<endl;
+    struct ballnode *root = new ballnode(points);
+    
+    struct centroid centroid;
     double dim[D] = {};
     
     for (int k=0; k<D; k++) {
@@ -169,30 +182,37 @@ int balltree_insert_all(struct balltree *tree, double **dim_all, int n, int D)
             dim[k] += points.at(i)->dim[k];
         }
     }
-    cout<<"done with centroid"<<endl;
-    centroid -> dim = dim;
-    root->pivot = centroid;
-    pair<double, struct datapoint*> answer = getRadius(*root->pivot,root->data,D);
+    centroid.dim = dim;
+    root->pivot = &centroid;
+    pair<double, struct datapoint*> answer = getRadius(root->pivot,root->data,D);
     root->radius = answer.first;
-    struct datapoint *child1 = answer.second;
-    struct datapoint *child2 = getMaxDist(*child1,root->data,D);
+
+    struct datapoint* child1_point = answer.second;
+    struct datapoint* child2_point = getMaxDist(child1_point,root->data,D);
+    
     vector<datapoint*> child1_points;
     vector<datapoint*> child2_points;
-    cout<<"done with child"<<endl;
+    
     for (int k=0; k<points.size(); k++) {
-        datapoint dt = *points.at(k);
-        if(getDistance(*child1,dt,D)<getDistance(*child2,dt,D))
-            child1_points.push_back(&dt);
+        datapoint *dt = points.at(k);
+        if(getDistance(child1_point,dt,D)<getDistance(child2_point,dt,D))
+            child1_points.push_back(dt);
         else
-            child2_points.push_back(&dt);
+            child2_points.push_back(dt);
     }
-    root->child1 = child1_points;
-    root->child2 = child2_points;
-    cout<<"done with root"<<endl;
+    
+    struct ballnode *child1 = new ballnode(child1_points);
+    struct ballnode *child2 = new ballnode(child2_points);
+    
+    root->child1 = child1;
+    root->child2 = child2;
+    
     if(child1_points.size()>2) // might change
         recursive_insert(root->child1, child1_points.size(),D); //recursive insert on both childs
+    
     if(child2_points.size()>2) //might change
         recursive_insert(root->child2, child2_points.size(),D);
+    
     return 0;
 }
 
@@ -216,10 +236,13 @@ if (read_X_from_file(X, n, D, fname)==0)
 printf("error open file.\n");
 exit(1);
 }
-    
+
+double start_build = omp_get_wtime();
 struct balltree *btree = balltree_create(n);
 balltree_insert_all(btree,X,n,D);
-    cout << "done "<<endl;
+    double end_build = omp_get_wtime()-start_build;
+    cout<<"Time to create ball tree: "<<end_build<<endl;
+    
     return 0;
 }
 
