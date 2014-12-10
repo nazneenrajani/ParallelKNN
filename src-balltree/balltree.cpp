@@ -37,7 +37,7 @@ struct centroid {
 };
 
 struct ballnode {
-    vector<struct datapoint> *data; //list of nodes it owns
+    vector<struct datapoint*> data; //list of nodes it owns
     double radius;
     struct centroid *pivot;
     vector<struct datapoint*> child1;
@@ -71,33 +71,33 @@ return 0;
 return (timeval.tv_sec - first_timeval.tv_sec) * 1000 + (timeval.tv_usec - first_timeval.tv_usec) / 1000;
 }
 
-pair<double,struct datapoint*> getRadius(const struct centroid& target, vector<datapoint>& pts, int D) {
+pair<double,struct datapoint*> getRadius(const struct centroid& target, vector<datapoint*>& pts, int D) {
     double radius =0.0;
     struct datapoint *child1;
     for (int k=0; k<pts.size(); k++) {
          double dist = 0.0;
         for (int i = 0; i < D; ++i) {
-            dist += (target.dim[i] - pts[k].dim[i]) * (target.dim[i] - pts[k].dim[i]);
+            dist += (target.dim[i] - pts[k]->dim[i]) * (target.dim[i] - pts[k]->dim[i]);
         }
         if(sqrt(dist)>radius){
             radius = sqrt(dist);
-            child1 = &pts[k];
+            child1 = pts[k];
         }
     }
     return make_pair(radius,child1);
 }
 
-struct datapoint* getMaxDist(const struct datapoint& target, vector<datapoint>& pts, int D) {
+struct datapoint* getMaxDist(const struct datapoint& target, vector<datapoint*>& pts, int D) {
     double radius =0.0;
     struct datapoint *child2;
     for (int k=0; k<pts.size(); k++) {
         double dist = 0.0;
         for (int i = 0; i < D; ++i) {
-            dist += (target.dim[i] - pts[k].dim[i]) * (target.dim[i] - pts[k].dim[i]);
+            dist += (target.dim[i] - pts[k]->dim[i]) * (target.dim[i] - pts[k]->dim[i]);
         }
         if(sqrt(dist)>radius){
             radius = sqrt(dist);
-            child2 = &pts[k];
+            child2 = pts[k];
         }
     }
     return child2;
@@ -111,33 +111,76 @@ double getDistance( datapoint& key, datapoint& curr, int D) {
     return sqrt(dist);
 }
 
-
-int balltree_insert_all(struct balltree *tree, double **dim_all, int n, int D)
-{   vector<datapoint> points;
-    int j;
-    points.reserve(n);
-    for (j=0; j<n; j++) {
-        points.emplace_back(dim_all[j],j+1);
-    }
-    struct ballnode *root;
-    root-> data = &points;
+void recursive_insert(vector<struct datapoint*> &root_points, int items, int D){
+    struct ballnode *bnode;
+    bnode -> data = root_points;
     struct centroid *centroid;
     double dim[D] = {};
     for (int k=0; k<D; k++) {
-        for (int i=0; i<n; i++) {
-            dim[k] += points.at(i).dim[k];
+        for (int i=0; i<items; i++) {
+            dim[k] += root_points.at(i)->dim[k];
         }
     }
     centroid -> dim = dim;
-    root->pivot = centroid;
-    pair<double, struct datapoint*> answer = getRadius(*root->pivot,*root->data,D);
-    root->radius = answer.first;
+    bnode->pivot = centroid;
+    pair<double, struct datapoint*> answer = getRadius(*bnode->pivot,bnode->data,D);
+    bnode->radius = answer.first;
     struct datapoint *child1 = answer.second;
-    struct datapoint *child2 = getMaxDist(*child1,*root->data,D);
+    struct datapoint *child2 = getMaxDist(*child1,bnode->data,D);
     vector<datapoint*> child1_points;
     vector<datapoint*> child2_points;
+    for (int k=0; k<root_points.size(); k++) {
+        datapoint dt = *root_points.at(k);
+        if(getDistance(*child1,dt,D)<getDistance(*child2,dt,D))
+            child1_points.push_back(&dt);
+        else
+            child2_points.push_back(&dt);
+    }
+    bnode->child1 = child1_points;
+    bnode->child2 = child2_points;
+    if(child1_points.size()>2) //I might change
+        recursive_insert(bnode->child1, child1_points.size(),D); //recursive insert on both childs
+    if(child2_points.size()>2) //I might change
+        recursive_insert(bnode->child2, child2_points.size(),D);
+}
+
+int balltree_insert_all(struct balltree *tree, double **dim_all, int n, int D)
+{   vector<datapoint> pts;
+    int j;
+    pts.reserve(n);
+    for (j=0; j<n; j++) {
+        pts.emplace_back(dim_all[j],j+1);
+    }
+
+    struct ballnode *root;
+    vector<datapoint*> points;
+    for (j=0; j<n; j++) {
+        points.push_back(&pts.at(j));
+    }
+
+    root-> data = points;
+    cout<<"done with centroid"<<endl;
+    struct centroid *centroid;
+    cout<<"done with centroid"<<endl;
+    double dim[D] = {};
+    
+    for (int k=0; k<D; k++) {
+        for (int i=0; i<n; i++) {
+            dim[k] += points.at(i)->dim[k];
+        }
+    }
+    cout<<"done with centroid"<<endl;
+    centroid -> dim = dim;
+    root->pivot = centroid;
+    pair<double, struct datapoint*> answer = getRadius(*root->pivot,root->data,D);
+    root->radius = answer.first;
+    struct datapoint *child1 = answer.second;
+    struct datapoint *child2 = getMaxDist(*child1,root->data,D);
+    vector<datapoint*> child1_points;
+    vector<datapoint*> child2_points;
+    cout<<"done with child"<<endl;
     for (int k=0; k<points.size(); k++) {
-        datapoint dt =points.at(k);
+        datapoint dt = *points.at(k);
         if(getDistance(*child1,dt,D)<getDistance(*child2,dt,D))
             child1_points.push_back(&dt);
         else
@@ -145,6 +188,11 @@ int balltree_insert_all(struct balltree *tree, double **dim_all, int n, int D)
     }
     root->child1 = child1_points;
     root->child2 = child2_points;
+    cout<<"done with root"<<endl;
+    if(child1_points.size()>2) // might change
+        recursive_insert(root->child1, child1_points.size(),D); //recursive insert on both childs
+    if(child2_points.size()>2) //might change
+        recursive_insert(root->child2, child2_points.size(),D);
     return 0;
 }
 
