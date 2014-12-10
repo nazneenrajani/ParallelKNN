@@ -17,7 +17,8 @@ def get_knn_graph(data_file, k, d, N, alg):
   t_start = time.time()
   nbrs = NearestNeighbors(n_neighbors=(k_plus_1), algorithm=alg).fit(a)
   t_tree = time.time()
-  knn_graph = nbrs.kneighbors_graph(a).toarray()
+  # knn_graph = nbrs.kneighbors_graph(a).toarray()
+  knn_graph = nbrs.kneighbors_graph(a)
   t_graph = time.time() - t_tree
   t = time.time() - t_start
   print 'time to fit model = ' + str(t_tree-t_start) + " seconds"

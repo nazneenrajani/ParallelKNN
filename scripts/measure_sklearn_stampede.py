@@ -3,7 +3,8 @@ import run_sklearn
 
 k = 8
 d = 784
-datasets = [['../../data/mnist-test.dat', 10000], ['../../data/mnist-train.dat', 60000]]
+# datasets = [['../../data/mnist-test.dat', 10000], ['../../data/mnist-train.dat', 60000]]
+datasets = [['../../data/mnist-train.dat', 60000], ['../../data/mnist-test.dat', 10000]]
 for dataset in datasets:
   print dataset[0], ' -----------------------'
   algs = ['kd_tree', 'ball_tree', 'brute']
