@@ -6,6 +6,7 @@
  *
  * To use:
  * 	- Initial setup:
+ * 		- Note: Ensure that your system has: GCC 4.7 or later; cmake; boost
  * 		- Create a directory (eg 'kdtree') in the 'apps' directory found in your Galois directory (eg Galois-2.2.1/apps/kdtree)
  * 		- Put this file in that new directory
  * 		- Create a file CMakeLists.txt in that new directory. If your app directory is 'kdtree', the CMakeLists.txt file would look like:
@@ -165,6 +166,7 @@ struct P_knn {
 				TreeNode dest = kdtree.getEdgeDst(edge);
 				if (kdtree.getData(dest).isLeftChild) {
 					search_subtree(pq, dest, key, (level+1)%n_dims);
+					break;
 				}
 			}
 		}
@@ -175,6 +177,7 @@ struct P_knn {
 				TreeNode dest = kdtree.getEdgeDst(edge);
 				if (!kdtree.getData(dest).isLeftChild) {
 					search_subtree(pq, dest, key, (level+1)%n_dims);
+					break;
 				}
 			}
 		}
@@ -186,6 +189,7 @@ struct P_knn {
 					TreeNode dest = kdtree.getEdgeDst(edge);
 					if (!kdtree.getData(dest).isLeftChild) {
 						search_subtree(pq, dest, key, (level+1)%n_dims);
+						break;
 					}
 				}
 			}
@@ -194,6 +198,7 @@ struct P_knn {
 					TreeNode dest = kdtree.getEdgeDst(edge);
 					if (kdtree.getData(dest).isLeftChild) {
 						search_subtree(pq, dest, key, (level+1)%n_dims);
+						break;
 					}
 				}
 			}
@@ -237,18 +242,19 @@ bool read_data_from_file(double **data, char *filename, int N, int D) {
   return true;
 }
 
-int main(int argc, char **argv) {
-	Galois::StatManager sm;
-	char* datafile = argv[1];
-	cout << "Results for " << datafile << "data:" << endl;
-	int D = atoi(argv[2]);
-	int N = atoi(argv[3]);
-	int k = atoi(argv[4]);
-	int n_threads = atoi(argv[5]);
+struct Times {
+	double build_tree;
+	double get_knn;
+	double total;
 
-	/* Read in data: */
-	Galois::StatTimer readDataTime("readData");
-	readDataTime.start();
+	Times() {
+		build_tree = 0.0;
+		get_knn = 0.0;
+		total = 0.0;
+	}
+};
+
+double** read_data(char* datafile, int D, int N) {
 	double** data;
 	data = (double**) malloc(N*sizeof(double *));
 	for (int i = 0; i < N; ++i) {
@@ -258,10 +264,14 @@ int main(int argc, char **argv) {
 		printf("error reading data!\n");
 		exit(1);
 	}
-	readDataTime.stop();
+	return data;
+}
 
-	Galois::setActiveThreads(n_threads);
+void run_knn(double** data, int D, int N, int k, int n_threads, Times& times) {
+	/* Read in data: */
+	Galois::StatManager sm;
 
+	Galois::setActiveThreads(1);
 	Galois::StatTimer totalTime("totalTime");
 	totalTime.start();
 
@@ -290,8 +300,10 @@ int main(int argc, char **argv) {
 	worklist.emplace_back(root_node_idx, median+1, N, 1, false);
 	Galois::for_each(worklist.begin(), worklist.end(), P_addTreeEdge(kdnodes, kdtree, gnodes, D));
 	buildTree.stop();
+	times.build_tree += buildTree.get();
 
 	/* Build kNN Graph */
+	Galois::setActiveThreads(n_threads);
 	Galois::StatTimer knnTime("knnTime");
 	knnTime.start();
 	KNNGraph knnGraph;
@@ -304,64 +316,150 @@ int main(int argc, char **argv) {
 	}
 	Galois::do_all(knnGraph.begin(), knnGraph.end(), P_knn(k, D, knnGraph, gnodes_knn, kdtree, gnodes[root_node_idx]));
 	knnTime.stop();
+	times.get_knn += knnTime.get();
 	totalTime.stop();
+	times.total += totalTime.get();
 
-	// check results:
-	printf("neighbors for node 1: ");
-	for (auto edge : knnGraph.out_edges(gnodes_knn[0])) {
-		KNNNode dest = knnGraph.getEdgeDst(edge);
-		KDNode& dest_kd = knnGraph.getData(dest);
-		cout << dest_kd.idx+1 << " ";
-	}
-	cout << endl;
-
-	printf("neighbors for node 2: ");
-	for (auto edge : knnGraph.out_edges(gnodes_knn[1])) {
-		KNNNode dest = knnGraph.getEdgeDst(edge);
-		KDNode& dest_kd = knnGraph.getData(dest);
-		cout << dest_kd.idx+1 << " ";
-	}
-	cout << endl;
-
-	free(data);
 	free(gnodes);
 	free(gnodes_knn);
 }
 
-//	// test graph...
-//		KDNode& node_last = kdtree.getData(gnodes[N-1]);
-//		for (int i = 0; i < D; ++i) {
-////			cout << node_last.pt[i] << " ";
-//			if (node_last.pt[i] != data[N-1][i]) {
-//				cout << node_last.pt[i] << " != " << data[N-1][i] << endl;
-//			}
-//		}
-//		cout << endl;
-//		KDNode& random = kdtree.getData(gnodes[378]);
-//		for (int i = 0; i < D; ++i) {
-////			cout << random.pt[i] << " ";
-//			if (random.pt[i] != data[378][i]) {
-//				cout << random.pt[i] << " != " << data[378][i] << endl;
-//			}
-//		}
-//		cout << endl;
+struct Data {
+	char* datafile;
+	int D;
+	int N;
+	int k;
 
-//	// test tree:
-//	KDNode& root_post = kdtree.getData(gnodes[root_node_idx]);
-//	printf("root node = %d\n", root_post.idx);
-//	for (int i = 0; i < D; ++i) {
-//			cout << root_post.pt[i] << " ";
+	Data(char* f, int D, int N, int k) : datafile(f), D(D), N(N), k(k) { }
+};
+
+void measure_performance() {
+	int n_reps = 1;
+//	Data mnist_test("../../../ScalableML/data/mnist-test.dat", 784, 10000, 8);
+	Data mnist_train("../../../ScalableML/data/mnist-train.dat", 784, 60000, 8);
+	vector<Data> datasets;
+//	datasets.push_back(mnist_test);
+	datasets.push_back(mnist_train);
+	int n_threads[] = { 1, 4, 8, 16, 32 };
+
+	for (Data dataset : datasets) {
+		cout << "---------- Results for " << dataset.datafile << " data: ----------" << endl;
+		double** data = read_data(dataset.datafile, dataset.D, dataset.N);
+		for (int t : n_threads) {
+			printf(" +++++ %d Threads +++++\n", t);
+			Times times;
+			for (int rep = 0; rep < n_reps; ++rep) {
+				run_knn(data, dataset.D, dataset.N, dataset.k, t, times);
+			}
+			printf("\n\n +++++ %d Threads +++++\n", t);
+			printf("average time to build kd tree = %f seconds\n", times.build_tree/(n_reps*1000));
+			printf("average time to get knn graph = %f seconds\n", times.get_knn/(n_reps*1000));
+			printf("average total time            = %f seconds\n\n\n", times.total/(n_reps*1000));
+		}
+		free(data);
+	}
+
+}
+
+int main(int argc, char **argv) {
+	if (argc == 6) {
+		char* datafile = argv[1];
+		cout << "Results for " << datafile << "data:" << endl;
+		int D = atoi(argv[2]);
+		int N = atoi(argv[3]);
+		int k = atoi(argv[4]);
+		int n_threads = atoi(argv[5]);
+		double** data = read_data(datafile, D, N);
+		Times times;
+		run_knn(data, D, N, k, n_threads, times);
+		free(data);
+	}
+	else {
+		measure_performance();
+	}
+
+
+
+//
+//	/* Read in data: */
+//	Galois::StatTimer readDataTime("readData");
+//	readDataTime.start();
+//	double** data;
+//	data = (double**) malloc(N*sizeof(double *));
+//	for (int i = 0; i < N; ++i) {
+//		data[i] = (double*) malloc(D*sizeof(double));
+//	}
+//	if (!read_data_from_file(data, datafile, N, D)) {
+//		printf("error reading data!\n");
+//		exit(1);
+//	}
+//	readDataTime.stop();
+//
+//	Galois::setActiveThreads(1);
+//
+//	Galois::StatTimer totalTime("totalTime");
+//	totalTime.start();
+//
+//	/* Convert to vector of KDNodes and insert into graph: */
+//	Galois::StatTimer buildTree("buildTree");
+//	buildTree.start();
+//	KDTree kdtree;
+//	vector<KDNode> kdnodes; // vector of kdtree nodes, NOT in indexed order (starts in order, but will be resorted)
+//	kdnodes.reserve(N);
+//	TreeNode* gnodes; // array of graph nodes, IN indexed order: gnodes[0] corresponds to the first data point in the file
+//	gnodes = (TreeNode*) malloc(N*sizeof(TreeNode));
+//	for (int i = 0; i < N; ++i) {
+//		kdnodes.emplace_back(data[i], i);
+//		gnodes[i] = kdtree.createNode(kdnodes[i]);
+//		kdtree.addNode(gnodes[i]);
+//	}
+//
+//	/* Build KDTree */
+//	sort(kdnodes.begin(), kdnodes.end(), CompareNodes(0));
+//	int median = N/2;
+//	int root_node_idx = kdnodes[median].idx; // corresponds to the root's index in gnodes: gnodes[root_node_idx]
+//	KDNode& root = kdtree.getData(gnodes[root_node_idx]);
+//	root.dim = 0;
+//	vector<P_buildTree> worklist;
+//	worklist.emplace_back(root_node_idx, 0, median, 1, true);
+//	worklist.emplace_back(root_node_idx, median+1, N, 1, false);
+//	Galois::for_each(worklist.begin(), worklist.end(), P_addTreeEdge(kdnodes, kdtree, gnodes, D));
+//	buildTree.stop();
+//
+//	/* Build kNN Graph */
+//	Galois::setActiveThreads(n_threads);
+//	Galois::StatTimer knnTime("knnTime");
+//	knnTime.start();
+//	KNNGraph knnGraph;
+//	KNNNode* gnodes_knn;
+//	gnodes_knn = (KNNNode*) malloc(N*sizeof(KNNNode));
+//	for (int i = 0; i < N; ++i) {
+//		int idx = kdnodes[i].idx;
+//		gnodes_knn[idx] = knnGraph.createNode(kdnodes[i]);
+//		knnGraph.addNode(gnodes_knn[idx]);
+//	}
+//	Galois::do_all(knnGraph.begin(), knnGraph.end(), P_knn(k, D, knnGraph, gnodes_knn, kdtree, gnodes[root_node_idx]));
+//	knnTime.stop();
+//	totalTime.stop();
+//
+//	// check results:
+//	printf("neighbors for node 1: ");
+//	for (auto edge : knnGraph.out_edges(gnodes_knn[0])) {
+//		KNNNode dest = knnGraph.getEdgeDst(edge);
+//		KDNode& dest_kd = knnGraph.getData(dest);
+//		cout << dest_kd.idx+1 << " ";
 //	}
 //	cout << endl;
 //
-//	for (auto edge : kdtree.out_edges(gnodes[root_node_idx])) {
-//		GNode dest = kdtree.getEdgeDst(edge);
-//		KDNode& dest_kd = kdtree.getData(dest);
-//		if (dest_kd.isLeftChild) { printf("root's left child"); }
-//		else { printf("root's right child"); }
-//		printf("= %d\n", dest_kd.idx);
-//		for (int i = 0; i < D; ++i) {
-//			cout << dest_kd.pt[i] << " ";
-//		}
-//		cout << endl;
+//	printf("neighbors for node 2: ");
+//	for (auto edge : knnGraph.out_edges(gnodes_knn[1])) {
+//		KNNNode dest = knnGraph.getEdgeDst(edge);
+//		KDNode& dest_kd = knnGraph.getData(dest);
+//		cout << dest_kd.idx+1 << " ";
 //	}
+//	cout << endl;
+//
+//	free(data);
+//	free(gnodes);
+//	free(gnodes_knn);
+}
