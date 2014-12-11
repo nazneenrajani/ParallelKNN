@@ -19,6 +19,9 @@
 #include <omp.h>
 #include<queue>
 
+#include <cstring>
+#include <fstream>
+#include <sstream>
 using namespace std;
 
 
@@ -370,6 +373,35 @@ int main(int argc, char **argv)
     double end_query = omp_get_wtime()-start_query;
     cout<<"Time to query ball tree: "<<end_query<<endl;
     return 0;
+}
+
+bool read_data_from_libsvm(double **data, char *filename, int N, int D) {
+    for (int idx = 0; idx < N; ++idx) {
+        for (int dim = 0; dim < D; ++dim) {
+            data[idx][dim] = 0;
+        }
+    }
+    
+    ifstream f(filename);
+    string line;
+    int data_idx = 0;
+    while(getline(f, line)) {
+        istringstream iss(line);
+        string label = "";
+        iss >> label;
+        while(iss) {
+            string sub = "";
+            iss >> sub;
+            if(sub.length() == 0) { break; }
+            string feature = sub.substr(0, sub.find(':'));
+            int dim = atoi(feature.c_str()) - 1; // have to decrement to be 0-based
+            string val = sub.substr(sub.find(':')+1, sub.length());
+            data[data_idx][dim] = atof(val.c_str());
+        }
+        ++data_idx;
+    }
+    f.close();
+    return true;
 }
 
 int read_X_from_file(double **X, int n, int D, char *filename)
