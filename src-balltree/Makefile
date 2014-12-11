@@ -9,4 +9,4 @@ clean:
 	rm balltree
 
 run:
-	./balltree
+	./balltree 20640 8 /scratch/02336/nrajani/data/cadata 32 30
