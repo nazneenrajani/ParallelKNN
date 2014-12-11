@@ -17,12 +17,12 @@
 #include <iostream>
 #include <time.h>
 #include <omp.h>
+#include<queue>
 
 using namespace std;
 
 
 int read_X_from_file(double **X, int n, int D, char *filename);
-
 
 struct datapoint {
     double *dim; //list of dimensions
@@ -47,21 +47,21 @@ struct ballnode {
     struct ballnode* child2;
     ballnode(vector<struct datapoint*> data){
         this -> data = data;
+        this->radius=0;
+        this->pivot=NULL;
+        this->child1=NULL;
+        this->child2=NULL;
     }
 };
 
 struct balltree {
     int num_points;
     struct ballnode *root;
+    balltree(int n){
+        this->num_points =n;
+        this->root=NULL;
+    }
 };
-
-struct balltree *balltree_create(int n)
-{
-    struct balltree *tree;
-    tree->num_points = n;
-    tree->root = 0;
-    return tree;
-}
 
 unsigned int get_msec(void)
 {
@@ -116,6 +116,13 @@ double getDistance(struct datapoint* key, struct datapoint* curr, int D) {
     return sqrt(dist);
 }
 
+double getDistancePivot(struct datapoint* key, struct centroid* curr, int D) {
+    double dist = 0.0;
+    for (int i = 0; i < D; ++i) {
+        dist += (key->dim[i] - curr->dim[i]) * (key->dim[i] - curr->dim[i]);
+    }
+    return sqrt(dist);
+}
 void recursive_insert(struct ballnode *root, int items, int D){
     struct centroid centroid;
     double dim[D] = {};
@@ -151,11 +158,18 @@ void recursive_insert(struct ballnode *root, int items, int D){
     root->child1 = child1;
     root->child2 = child2;
 
-    if(child1_points.size()>2){ //I might change
+    if(child1_points.size()>2) //I might change
         recursive_insert(root->child1, child1_points.size(),D); //recursive insert on both childs
+    else{
+        root->child1->child1=NULL;
+        root->child1->child2=NULL;
     }
     if(child2_points.size()>2) //I might change
         recursive_insert(root->child2, child2_points.size(),D);
+    else{
+        root->child2->child1=NULL;
+        root->child2->child2=NULL;
+    }
 }
 
 int balltree_insert_all(struct balltree *tree, double **dim_all, int n, int D)
@@ -165,15 +179,15 @@ int balltree_insert_all(struct balltree *tree, double **dim_all, int n, int D)
     for (j=0; j<n; j++) {
         pts.emplace_back(dim_all[j],j);
     }
-
+    cout<<"building"<<endl;
     vector<datapoint*> points;
     points.reserve(n);
     for (j=0; j<n; j++) {
         points.push_back(&pts.at(j));
     }
-
     struct ballnode *root = new ballnode(points);
-    
+    tree->root = root;
+    cout<<"building"<<endl;
     struct centroid centroid;
     double dim[D] = {};
     
@@ -182,13 +196,14 @@ int balltree_insert_all(struct balltree *tree, double **dim_all, int n, int D)
             dim[k] += points.at(i)->dim[k];
         }
     }
+    cout<<"building"<<endl;
     centroid.dim = dim;
-    root->pivot = &centroid;
-    pair<double, struct datapoint*> answer = getRadius(root->pivot,root->data,D);
-    root->radius = answer.first;
+    tree->root->pivot = &centroid;
+    pair<double, struct datapoint*> answer = getRadius(tree->root->pivot,tree->root->data,D);
+    tree->root->radius = answer.first;
 
     struct datapoint* child1_point = answer.second;
-    struct datapoint* child2_point = getMaxDist(child1_point,root->data,D);
+    struct datapoint* child2_point = getMaxDist(child1_point,tree->root->data,D);
     
     vector<datapoint*> child1_points;
     vector<datapoint*> child2_points;
@@ -204,18 +219,72 @@ int balltree_insert_all(struct balltree *tree, double **dim_all, int n, int D)
     struct ballnode *child1 = new ballnode(child1_points);
     struct ballnode *child2 = new ballnode(child2_points);
     
-    root->child1 = child1;
-    root->child2 = child2;
+    tree->root->child1 = child1;
+    tree->root->child2 = child2;
     
     if(child1_points.size()>2) // might change
-        recursive_insert(root->child1, child1_points.size(),D); //recursive insert on both childs
-    
+        recursive_insert(tree->root->child1, child1_points.size(),D); //recursive insert on both childs
+    else{
+        tree->root->child1->child1=NULL;
+        tree->root->child1->child2=NULL;
+    }
     if(child2_points.size()>2) //might change
-        recursive_insert(root->child2, child2_points.size(),D);
-    
+        recursive_insert(tree->root->child2, child2_points.size(),D);
+    else{
+        tree->root->child2->child1=NULL;
+        tree->root->child2->child2=NULL;
+    }
     return 0;
 }
 
+class sortNodes {
+public:
+    bool operator() (const pair<int, double>& target, const pair<int, double>& query) {
+        if (target.second < query.second)
+            return true;
+        else
+            return false;
+    }
+};
+
+void balltree_nearest_n(priority_queue<pair<int, double>, vector<pair<int, double> >, sortNodes>& pq, struct ballnode* node, struct datapoint *t, int k, int D){
+     cout<<"if"<<endl;
+    if (pq.size()==k){
+        if (getDistancePivot(t, node->pivot,D)>= pq.top().second) {
+           return;
+        }
+    }
+     else if(node->child1==NULL && node->child2 == NULL){
+         cout<<"else if"<<endl;
+         for (int i=0; i<node->data.size(); i++) {
+             double dist =getDistance(t, node->data.at(i),D);
+             if ( dist< pq.top().second){
+                 if(pq.size()==k){
+                     pq.pop();
+                     pq.emplace(make_pair(node->data.at(i)->idx,dist));
+                 }
+                 else
+                     pq.emplace(make_pair(node->data.at(i)->idx,dist));
+             }
+                 
+         }
+         
+     }
+     else{
+         double dist_1 = getDistancePivot(t, node->child1->pivot,D);
+         double dist_2 = getDistancePivot(t, node->child2->pivot,D);
+         if(dist_1<dist_2){
+             cout<<"else->if"<<endl;
+             balltree_nearest_n(pq,node->child1,t,k,D);
+             balltree_nearest_n(pq,node->child2,t,k,D);
+         }
+         else{
+             cout<<"else->else"<<endl;
+             balltree_nearest_n(pq,node->child2,t,k,D);
+             balltree_nearest_n(pq,node->child1,t,k,D);
+         }
+     }
+}
 
 int main(int argc, char **argv)
 {
@@ -238,11 +307,18 @@ exit(1);
 }
 
 double start_build = omp_get_wtime();
-struct balltree *btree = balltree_create(n);
+struct balltree *btree = new balltree(n);
+    cout<<"building"<<endl;
 balltree_insert_all(btree,X,n,D);
     double end_build = omp_get_wtime()-start_build;
     cout<<"Time to create ball tree: "<<end_build<<endl;
     
+    for (i=0; i<n; i++) {
+        priority_queue<pair<int, double>, vector<pair<int, double> >, sortNodes> pq;
+        struct datapoint *target = new datapoint(X[i],i);
+        cout<<"before knn"<<endl;
+        balltree_nearest_n(pq, btree->root, target,8,D);
+    }
     return 0;
 }
 
