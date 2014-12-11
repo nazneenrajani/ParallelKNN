@@ -312,7 +312,9 @@ void balltree_nearest_n(priority_queue<pair<int, double>, vector<pair<int, doubl
     else if(node->child1==NULL && node->child2 == NULL){
         for (int i=0; i<node->data.size(); i++) {
             double dist =getDistance(t, node->data.at(i),D);
-            if (pq.size()>0 && dist< pq.top().second){
+            if(pq.size()==0)
+                pq.emplace(make_pair(node->data.at(i)->idx,dist));
+            else if (dist< pq.top().second){
                 if(pq.size()==k){
                     pq.pop();
                     pq.emplace(make_pair(node->data.at(i)->idx,dist));
@@ -364,11 +366,18 @@ int main(int argc, char **argv)
     double end_build = omp_get_wtime()-start_build;
     cout<<"Time to create ball tree: "<<end_build<<endl;
     double start_query = omp_get_wtime();
-    #pragma omp parallel for default(shared) private(i)
+    //#pragma omp parallel for default(shared) private(i)
     for (i=0; i<n; i++) {
         priority_queue<pair<int, double>, vector<pair<int, double> >, sortNodes> pq;
         struct datapoint *target = new datapoint(X[i],i);
         balltree_nearest_n(pq, btree->root, target,8,D);
+        //cout<<pq.size()<<endl;
+        if(i==0){
+            while ( !pq. empty() ) {
+                cout << pq.top().first << "\t"<<pq.top().second<<endl;
+                pq.pop();
+            }
+        }
     }
     double end_query = omp_get_wtime()-start_query;
     cout<<"Time to query ball tree: "<<end_query<<endl;

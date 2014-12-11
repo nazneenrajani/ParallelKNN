@@ -9,4 +9,4 @@ clean:
 	rm balltree
 
 run:
-	./balltree 20640 8 /scratch/02336/nrajani/data/cadata 32 30
+	./balltree 10000 784 /Users/nrajani/kdtree-knn/data/mnist-test.dat 16 30
