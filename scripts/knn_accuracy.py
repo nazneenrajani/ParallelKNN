@@ -6,16 +6,16 @@ import run_sklearn
 
 # Usage:
 # - From command line: 
-#     python knn_accuracy.py path_to_input_data path_to_chens_output k d N
-#     example: python knn_accuracy.py ../data/frey.dat ../data/frey.knn 12 560 1965
+#     python knn_accuracy.py path_to_input_data data_format path_to_chens_output k d N
+#     example: python knn_accuracy.py ../data/frey.dat binary ../data/frey.knn 12 560 1965
 # - In interpreter: 
-#     knn_accuracy.compare_chen(path_to_input_data, path_to_chens_output, k, d, N)
-#     example: knn_accuracy.compare_chen('../data/frey.dat', '../data/frey.knn', 12, 560, 1965)
+#     knn_accuracy.compare_chen(path_to_input_data, data_format, path_to_chens_output, k, d, N)
+#     example: knn_accuracy.compare_chen('../data/frey.dat', 'binary', '../data/frey.knn', 12, 560, 1965)
 
-def get_accuracy(data_file, knn_output, alg, k, d, N):
+def get_accuracy(data_file, data_format, knn_output, alg, k, d, N):
   # Get ground truth
   print "getting ground truth"
-  ground_truth = run_sklearn.get_knn_graph(data_file, k, d, N, 'brute')
+  ground_truth = run_sklearn.get_knn_graph(data_file, data_format, k, d, N, 'brute')
   print "finished getting ground truth"
   
   if alg == "chen":
@@ -44,9 +44,9 @@ def get_accuracy(data_file, knn_output, alg, k, d, N):
   accuracy = 1 - n_incorrect/(N*N+0.0)
   return accuracy
 
-def compare_chen(input_data, chen_output, k, d, N):
+def compare_chen(input_data, data_format, chen_output, k, d, N):
   # Chen's approach:
-  chen_accuracy = get_accuracy(input_data, chen_output, 'chen', k, d, N)
+  chen_accuracy = get_accuracy(input_data, data_format, chen_output, 'chen', k, d, N)
   print "Chen's approach: \taccuracy = ", chen_accuracy
 
   # Scikit-learn's approach, using kd-tree:
@@ -55,4 +55,4 @@ def compare_chen(input_data, chen_output, k, d, N):
   # print "Scikit-learn's kd-tree: accuracy = ", sklearn_accuracy
 
 if __name__ == '__main__':
-  compare_chen(sys.argv[1], sys.argv[2], int(sys.argv[3]), int(sys.argv[4]), int(sys.argv[5]))
+  compare_chen(sys.argv[1], sys.argv[2], sys.argv[3], int(sys.argv[4]), int(sys.argv[5]), int(sys.argv[6]))
