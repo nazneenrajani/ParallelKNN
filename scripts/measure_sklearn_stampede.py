@@ -8,8 +8,7 @@ covtype = ["/scratch/02234/kmcardle/data/covtype.libsvm.binary", 'libsvm', 54, 5
 year = ["/scratch/02234/kmcardle/data/YearPredictionMSD", 'libsvm', 90, 463715, 8]
 aloi = ["/scratch/02234/kmcardle/data/aloi", 'libsvm', 128, 108000, 8]
 
-# datasets = [poker, rna, cadata, covtype, year, aloi]
-datasets = [rna, covtype, poker, year, aloi]
+datasets = [poker, rna, cadata, covtype, year, aloi]
 
 for dataset in datasets:
   print dataset[0], ' -----------------------'

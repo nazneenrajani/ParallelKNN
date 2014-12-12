@@ -28,18 +28,11 @@ def get_knn_graph(data_file, data_format, k, d, N, alg):
   t_start = time.time()
   nbrs = NearestNeighbors(n_neighbors=(k_plus_1), algorithm=alg, leaf_size=1).fit(a)
   t_tree = time.time()
-  # knn_graph = nbrs.kneighbors_graph(a).toarray()
   knn_graph = nbrs.kneighbors_graph(a)
   t_graph = time.time() - t_tree
   t = time.time() - t_start
-  # print 'time to fit model = ' + str(t_tree-t_start) + " seconds"
-  # print 'time to make knn graph = ' + str(t_graph) + " seconds"
-  # print 'overall time = ' + str(t) + " seconds"
-  # knn_array = knn_graph.toarray()
-  # print "neighbors of 0 = ", np.nonzero(knn_array[0])
-  # print "neighbors of 1 = ", np.nonzero(knn_array[1])
+  print 'overall time = ' + str(t) + " seconds"
   return knn_graph
 
 if __name__ == '__main__':
   knn_graph = get_knn_graph(sys.argv[1], sys.argv[2], int(sys.argv[3]), int(sys.argv[4]), int(sys.argv[5]), sys.argv[6])
-  # knn_graph.tofile(sys.argv[6], "\t")

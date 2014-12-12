@@ -38,8 +38,6 @@ def get_accuracy(data_file, data_format, knn_output, alg, k, d, N):
     knn_sparse = knn_output
 
   print "getting n_correct"
-  # n_correct = np.where(ground_truth == knn_sparse)[0].size
-  # accuracy = n_correct/(N*N+0.0)
   n_incorrect = (ground_truth - knn_sparse).nnz
   accuracy = 1 - n_incorrect/(N*N+0.0)
   return accuracy
@@ -48,11 +46,6 @@ def compare_chen(input_data, data_format, chen_output, k, d, N):
   # Chen's approach:
   chen_accuracy = get_accuracy(input_data, data_format, chen_output, 'chen', k, d, N)
   print "Chen's approach: \taccuracy = ", chen_accuracy
-
-  # Scikit-learn's approach, using kd-tree:
-  # g = run_sklearn.get_knn_graph(input_data, k, d, N, 'kd_tree')
-  # sklearn_accuracy = get_accuracy(input_data, g, 'sklearn', k, d, N)
-  # print "Scikit-learn's kd-tree: accuracy = ", sklearn_accuracy
 
 if __name__ == '__main__':
   compare_chen(sys.argv[1], sys.argv[2], sys.argv[3], int(sys.argv[4]), int(sys.argv[5]), int(sys.argv[6]))
