@@ -85,6 +85,28 @@ struct P_buildTree {
 	}
 };
 
+int find_split_dim(vector<KDNode>& kdnodes, int lo_idx, int hi_idx, int n_dims) {
+	int best_dim = 0;
+	double max_var = 0;
+	int n = hi_idx - lo_idx;
+
+	for (int d = 0; d < n_dims; ++d) {
+		double mean = 0;
+		double sum_squares = 0;
+		for (int i = lo_idx; i < hi_idx; ++i) {
+			mean += kdnodes[i].pt[d];
+			sum_squares += (kdnodes[i].pt[d])*(kdnodes[i].pt[d]);
+		}
+		mean /= n;
+		double var = (sum_squares/n) - mean*mean;
+		if (var > max_var) {
+			max_var = var;
+			best_dim = d;
+		}
+	}
+	return best_dim;
+}
+
 struct P_addTreeEdge {
 	vector<KDNode>& kdnodes;
 	KDTree& tree;
@@ -108,7 +130,12 @@ struct P_addTreeEdge {
 			return;
 		}
 
-		sort(kdnodes.begin()+curr.kd_lo_idx, kdnodes.begin()+curr.kd_hi_idx, CompareNodes(curr.dim));
+		int split_dim = curr.dim;
+		/* if splitting on max discrimination */
+		split_dim = find_split_dim(kdnodes, curr.kd_lo_idx, curr.kd_hi_idx, n_dims);
+		/* end if splitting on max discrimination */
+
+		sort(kdnodes.begin()+curr.kd_lo_idx, kdnodes.begin()+curr.kd_hi_idx, CompareNodes(split_dim));
 		int med_idx = curr.kd_lo_idx + (curr.kd_hi_idx-curr.kd_lo_idx)/2;
 		int gnode_idx = kdnodes[med_idx].idx;
 		wl.push(P_buildTree(gnode_idx, curr.kd_lo_idx, med_idx, (curr.dim+1)%n_dims, true));
@@ -116,7 +143,7 @@ struct P_addTreeEdge {
 		tree.addEdge(gnodes[curr.gnode_parent_idx], gnodes[gnode_idx]);
 		KDNode& n = tree.getData(gnodes[gnode_idx]);
 		n.isLeftChild = curr.isLeftChild;
-		n.dim = curr.dim;
+		n.dim = split_dim;
 	}
 };
 
@@ -152,9 +179,8 @@ struct P_knn {
 		return sqrt(dist);
 	}
 
-	void search_subtree(priority_queue<pair<int, double>, vector<pair<int, double> >, CompareDist>& pq, TreeNode& curr, const KNNNode& key, int level) {
-		const KDNode& key_kd = knnGraph.getData(key);
-		KDNode& curr_kd = kdtree.getData(curr);
+	void search_subtree(priority_queue<pair<int, double>, vector<pair<int, double> >, CompareDist>& pq, TreeNode& curr, const KDNode& key_kd, int level) {
+		KDNode& curr_kd = kdtree.getData(curr, Galois::MethodFlag::NONE);
 		double dist = getDistance(key_kd, curr_kd);
 		// if pq has less than k elems in it, push curr on:
 		if (pq.size() < k) {
@@ -166,12 +192,12 @@ struct P_knn {
 			pq.emplace((make_pair(curr_kd.idx, dist)));
 		}
 		bool left_child_searched = true;
-		if (key_kd.pt[level] < curr_kd.pt[level]) {
+		if (key_kd.pt[curr_kd.dim] < curr_kd.pt[curr_kd.dim]) {
 			// check to see if curr has a left child. if it does, search_subtree on that child
 			for (KDTree::edge_iterator edge : kdtree.out_edges(curr)) {
 				TreeNode dest = kdtree.getEdgeDst(edge);
-				if (kdtree.getData(dest).isLeftChild) {
-					search_subtree(pq, dest, key, (level+1)%n_dims);
+				if (kdtree.getData(dest, Galois::MethodFlag::NONE).isLeftChild) {
+					search_subtree(pq, dest, key_kd, (level+1)%n_dims);
 					break;
 				}
 			}
@@ -181,20 +207,20 @@ struct P_knn {
 			// check to see if curr has a right child. if it does, search_subtree on that child
 			for (KDTree::edge_iterator edge : kdtree.out_edges(curr)) {
 				TreeNode dest = kdtree.getEdgeDst(edge);
-				if (!kdtree.getData(dest).isLeftChild) {
-					search_subtree(pq, dest, key, (level+1)%n_dims);
+				if (!kdtree.getData(dest, Galois::MethodFlag::NONE).isLeftChild) {
+					search_subtree(pq, dest, key_kd, (level+1)%n_dims);
 					break;
 				}
 			}
 		}
 
 		// as we walk back up the tree:
-		if ( (pq.size() < k) || (fabs(key_kd.pt[level] - curr_kd.pt[level]) < pq.top().second) ) {
+		if ( (pq.size() < k) || (fabs(key_kd.pt[curr_kd.dim] - curr_kd.pt[curr_kd.dim]) < pq.top().second) ) {
 			if (left_child_searched) { // search right subtree
 				for (KDTree::edge_iterator edge : kdtree.out_edges(curr)) {
 					TreeNode dest = kdtree.getEdgeDst(edge);
-					if (!kdtree.getData(dest).isLeftChild) {
-						search_subtree(pq, dest, key, (level+1)%n_dims);
+					if (!kdtree.getData(dest, Galois::MethodFlag::NONE).isLeftChild) {
+						search_subtree(pq, dest, key_kd, (level+1)%n_dims);
 						break;
 					}
 				}
@@ -202,8 +228,8 @@ struct P_knn {
 			else { // search left subtree
 				for (KDTree::edge_iterator edge : kdtree.out_edges(curr)) {
 					TreeNode dest = kdtree.getEdgeDst(edge);
-					if (kdtree.getData(dest).isLeftChild) {
-						search_subtree(pq, dest, key, (level+1)%n_dims);
+					if (kdtree.getData(dest, Galois::MethodFlag::NONE).isLeftChild) {
+						search_subtree(pq, dest, key_kd, (level+1)%n_dims);
 						break;
 					}
 				}
@@ -213,13 +239,15 @@ struct P_knn {
 
 	void operator() (const KNNNode& node) {
 		priority_queue<pair<int, double>, vector<pair<int, double> >, CompareDist> pq;
-		search_subtree(pq, kdroot, node, 0);
+		const KDNode& key_kd = knnGraph.getData(node, Galois::MethodFlag::NONE);
+		search_subtree(pq, kdroot, key_kd, 0);
 		for (int i = 0; i < k; ++i) {
 			int dest_idx = pq.top().first;
 			KNNNode& knn_dest = knnNodes[dest_idx];
 			double dist = pq.top().second;
 			pq.pop();
-			knnGraph.getEdgeData(knnGraph.addEdge(node, knn_dest)) = dist;
+			knnGraph.getEdgeData(knnGraph.addEdge(node, knn_dest, Galois::MethodFlag::NONE), Galois::MethodFlag::NONE) = dist;
+//			knnGraph.getEdgeData(knnGraph.addEdge(node, knn_dest)) = dist;
 		}
 	}
 };
@@ -374,15 +402,21 @@ void run_knn(double** data, int D, int N, int k, int n_threads, Times& times) {
 	for (int i = 0; i < N; ++i) {
 		kdnodes.emplace_back(data[i], i);
 		gnodes[i] = kdtree.createNode(kdnodes[i]);
-		kdtree.addNode(gnodes[i]);
+		kdtree.addNode(gnodes[i], Galois::MethodFlag::NONE);
 	}
 
 	/* Build KDTree */
-	sort(kdnodes.begin(), kdnodes.end(), CompareNodes(0));
+	int split_dim = 0;
+
+	/* if splitting on max discrimination */
+	split_dim = find_split_dim(kdnodes, 0, N, D);
+	/* end if splitting on max discrimination */
+
+	sort(kdnodes.begin(), kdnodes.end(), CompareNodes(split_dim));
 	int median = N/2;
 	int root_node_idx = kdnodes[median].idx; // corresponds to the root's index in gnodes: gnodes[root_node_idx]
-	KDNode& root = kdtree.getData(gnodes[root_node_idx]);
-	root.dim = 0;
+	KDNode& root = kdtree.getData(gnodes[root_node_idx], Galois::MethodFlag::NONE);
+	root.dim = split_dim;
 	vector<P_buildTree> worklist;
 	worklist.emplace_back(root_node_idx, 0, median, 1, true);
 	worklist.emplace_back(root_node_idx, median+1, N, 1, false);
@@ -400,9 +434,10 @@ void run_knn(double** data, int D, int N, int k, int n_threads, Times& times) {
 	for (int i = 0; i < N; ++i) {
 		int idx = kdnodes[i].idx;
 		gnodes_knn[idx] = knnGraph.createNode(kdnodes[i]);
-		knnGraph.addNode(gnodes_knn[idx]);
+		knnGraph.addNode(gnodes_knn[idx], Galois::MethodFlag::NONE);
 	}
 	Galois::do_all(knnGraph.begin(), knnGraph.end(), P_knn(k, D, knnGraph, gnodes_knn, kdtree, gnodes[root_node_idx]));
+//	Galois::do_all_local(knnGraph, P_knn(k, D, knnGraph, gnodes_knn, kdtree, gnodes[root_node_idx]));
 	knnTime.stop();
 	times.get_knn += knnTime.get();
 	totalTime.stop();
@@ -425,17 +460,28 @@ struct Data {
 void measure_performance() {
 	int n_reps = 1;
 	vector<Data> datasets;
-//	int n_threads[] = { 1, 4, 8, 16, 32 };
-	int n_threads[] = { 16 };
+	int n_threads[] = { 16, 8, 4, 1 };
 
-//	Data mnist_test("../../../ScalableML/data/mnist-test.dat", BINARY_DOUBLE, 784, 10000, 8);
-//	datasets.push_back(mnist_test);
-//	Data mnist_train("../../../ScalableML/data/mnist-train.dat", BINARY_DOUBLE, 784, 60000, 8);
-//	datasets.push_back(mnist_train);
+	Data mnist_test("../../../ScalableML/data/mnist-test.dat", BINARY_DOUBLE, 784, 10000, 8);
+	datasets.push_back(mnist_test);
+	Data mnist_train("../../../ScalableML/data/mnist-train.dat", BINARY_DOUBLE, 784, 60000, 8);
+	datasets.push_back(mnist_train);
 	Data mnist8m("/scratch/02234/kmcardle/data/mnist8m", LIBSVM, 784, 8100000, 8);
 	datasets.push_back(mnist8m);
-//	Data tinyimgs("/scratch/02234/kmcardle/data/tiny_images.bin", BINARY_UINT8, 3072, 79302017, 8);
-//	datasets.push_back(tinyimgs);
+	Data tinyimgs("/scratch/02234/kmcardle/data/tiny_images.bin", BINARY_UINT8, 3072, 79302017, 8);
+	datasets.push_back(tinyimgs);
+
+	Data poker("/scratch/02234/kmcardle/data/poker.t", LIBSVM, 10, 1000000, 8);
+	datasets.push_back(poker);
+	Data rna("/scratch/02234/kmcardle/data/cod-rna.t", LIBSVM, 8, 271617, 8);
+	datasets.push_back(rna);
+	Data cadata("/scratch/02234/kmcardle/data/cadata", LIBSVM, 8, 20640, 8);
+	datasets.push_back(cadata);
+	Data covtype("/scratch/02234/kmcardle/data/covtype.libsvm.binary", LIBSVM, 54, 581012, 8);
+	datasets.push_back(covtype);
+	Data year("/scratch/02234/kmcardle/data/YearPredictionMSD", LIBSVM, 90, 463715, 8);
+	datasets.push_back(year);
+	Data aloi("/scratch/02234/kmcardle/data/aloi", LIBSVM, 128, 108000, 8);
 
 	for (Data dataset : datasets) {
 		cout << "---------- Results for " << dataset.datafile << " data: ----------" << endl;
@@ -472,89 +518,4 @@ int main(int argc, char **argv) {
 	else {
 		measure_performance();
 	}
-
-
-
-//
-//	/* Read in data: */
-//	Galois::StatTimer readDataTime("readData");
-//	readDataTime.start();
-//	double** data;
-//	data = (double**) malloc(N*sizeof(double *));
-//	for (int i = 0; i < N; ++i) {
-//		data[i] = (double*) malloc(D*sizeof(double));
-//	}
-//	if (!read_data_from_file(data, datafile, N, D)) {
-//		printf("error reading data!\n");
-//		exit(1);
-//	}
-//	readDataTime.stop();
-//
-//	Galois::setActiveThreads(1);
-//
-//	Galois::StatTimer totalTime("totalTime");
-//	totalTime.start();
-//
-//	/* Convert to vector of KDNodes and insert into graph: */
-//	Galois::StatTimer buildTree("buildTree");
-//	buildTree.start();
-//	KDTree kdtree;
-//	vector<KDNode> kdnodes; // vector of kdtree nodes, NOT in indexed order (starts in order, but will be resorted)
-//	kdnodes.reserve(N);
-//	TreeNode* gnodes; // array of graph nodes, IN indexed order: gnodes[0] corresponds to the first data point in the file
-//	gnodes = (TreeNode*) malloc(N*sizeof(TreeNode));
-//	for (int i = 0; i < N; ++i) {
-//		kdnodes.emplace_back(data[i], i);
-//		gnodes[i] = kdtree.createNode(kdnodes[i]);
-//		kdtree.addNode(gnodes[i]);
-//	}
-//
-//	/* Build KDTree */
-//	sort(kdnodes.begin(), kdnodes.end(), CompareNodes(0));
-//	int median = N/2;
-//	int root_node_idx = kdnodes[median].idx; // corresponds to the root's index in gnodes: gnodes[root_node_idx]
-//	KDNode& root = kdtree.getData(gnodes[root_node_idx]);
-//	root.dim = 0;
-//	vector<P_buildTree> worklist;
-//	worklist.emplace_back(root_node_idx, 0, median, 1, true);
-//	worklist.emplace_back(root_node_idx, median+1, N, 1, false);
-//	Galois::for_each(worklist.begin(), worklist.end(), P_addTreeEdge(kdnodes, kdtree, gnodes, D));
-//	buildTree.stop();
-//
-//	/* Build kNN Graph */
-//	Galois::setActiveThreads(n_threads);
-//	Galois::StatTimer knnTime("knnTime");
-//	knnTime.start();
-//	KNNGraph knnGraph;
-//	KNNNode* gnodes_knn;
-//	gnodes_knn = (KNNNode*) malloc(N*sizeof(KNNNode));
-//	for (int i = 0; i < N; ++i) {
-//		int idx = kdnodes[i].idx;
-//		gnodes_knn[idx] = knnGraph.createNode(kdnodes[i]);
-//		knnGraph.addNode(gnodes_knn[idx]);
-//	}
-//	Galois::do_all(knnGraph.begin(), knnGraph.end(), P_knn(k, D, knnGraph, gnodes_knn, kdtree, gnodes[root_node_idx]));
-//	knnTime.stop();
-//	totalTime.stop();
-//
-//	// check results:
-//	printf("neighbors for node 1: ");
-//	for (auto edge : knnGraph.out_edges(gnodes_knn[0])) {
-//		KNNNode dest = knnGraph.getEdgeDst(edge);
-//		KDNode& dest_kd = knnGraph.getData(dest);
-//		cout << dest_kd.idx+1 << " ";
-//	}
-//	cout << endl;
-//
-//	printf("neighbors for node 2: ");
-//	for (auto edge : knnGraph.out_edges(gnodes_knn[1])) {
-//		KNNNode dest = knnGraph.getEdgeDst(edge);
-//		KDNode& dest_kd = knnGraph.getData(dest);
-//		cout << dest_kd.idx+1 << " ";
-//	}
-//	cout << endl;
-//
-//	free(data);
-//	free(gnodes);
-//	free(gnodes_knn);
 }

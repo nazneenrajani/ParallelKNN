@@ -8,11 +8,12 @@ covtype = ["/scratch/02234/kmcardle/data/covtype.libsvm.binary", 'libsvm', 54, 5
 year = ["/scratch/02234/kmcardle/data/YearPredictionMSD", 'libsvm', 90, 463715, 8]
 aloi = ["/scratch/02234/kmcardle/data/aloi", 'libsvm', 128, 108000, 8]
 
-datasets = [poker, rna, cadata, covtype, year, aloi]
+# datasets = [poker, rna, cadata, covtype, year, aloi]
+datasets = [rna, covtype, poker, year, aloi]
 
 for dataset in datasets:
   print dataset[0], ' -----------------------'
-  algs = ['ball_tree', 'kd_tree', 'brute']
+  algs = ['kd_tree', 'ball_tree', 'brute']
   for alg in algs:
     print alg, ": +++++++++++++"
     # get_knn_graph(data_file, data_format, k, d, N, alg):
