@@ -18,7 +18,7 @@
 #include <time.h>
 #include <omp.h>
 #include<queue>
-
+#include<cmath>
 #include <cstring>
 #include <fstream>
 #include <sstream>
@@ -77,7 +77,7 @@ pair<double,struct datapoint*> getRadius(const struct centroid *target, vector<d
         for (int i = 0; i < D; ++i) {
             dist += (target->dim[i] - pts[k]->dim[i]) * (target->dim[i] - pts[k]->dim[i]);
         }
-        if(sqrt(dist)>radius){
+        if(sqrt(abs(dist))>radius){
             radius = sqrt(dist);
             child1 = pts[k];
         }
@@ -93,7 +93,7 @@ struct datapoint* getMaxDist(const struct datapoint *target, vector<datapoint*>&
         for (int i = 0; i < D; ++i) {
             dist += (target->dim[i] - pts[k]->dim[i]) * (target->dim[i] - pts[k]->dim[i]);
         }
-        if(sqrt(dist)>radius){
+        if(sqrt(abs(dist))>radius){
             radius = sqrt(dist);
             child2 = pts[k];
         }
@@ -106,7 +106,7 @@ double getDistance(struct datapoint* key, struct datapoint* curr, int D) {
     for (int i = 0; i < D; ++i) {
         dist += (key->dim[i] - curr->dim[i]) * (key->dim[i] - curr->dim[i]);
     }
-    return sqrt(dist);
+    return sqrt(abs(dist));
 }
 
 double getDistancePivot(struct datapoint* key, struct centroid* curr, int D) {
@@ -114,7 +114,7 @@ double getDistancePivot(struct datapoint* key, struct centroid* curr, int D) {
     for (int i = 0; i < D; ++i) {
         dist += (key->dim[i] - curr->dim[i]) * (key->dim[i] - curr->dim[i]);
     }
-    return sqrt(dist);
+    return sqrt(abs(dist));
 }
 
 void recursive_insert(struct ballnode *root, int items, int D, int leaf_size){
@@ -302,14 +302,13 @@ public:
     }
 };
 
-void balltree_nearest_n(priority_queue<pair<int, double>, vector<pair<int, double> >, sortNodes>& pq, struct ballnode* node, struct datapoint *t, int k, int D){
-    
-    if (pq.size()==k){
-        if (getDistancePivot(t, node->pivot,D)>= pq.top().second) {
-            return;
+void balltree_nearest_n(priority_queue<pair<int, double>, vector<pair<int, double> >, sortNodes>& pq, struct ballnode* node, struct datapoint *t, int k, int D, double d_parent){
+    /*if (pq.size()==k){
+        if (d_sofar>= pq.top().second) {
+        return;
         }
-    }
-    else if(node->child1==NULL && node->child2 == NULL){
+    }*/
+     if(node->child1==NULL && node->child2 == NULL){
         for (int i=0; i<node->data.size(); i++) {
             double dist =getDistance(t, node->data.at(i),D);
             if(pq.size()==0)
@@ -319,8 +318,9 @@ void balltree_nearest_n(priority_queue<pair<int, double>, vector<pair<int, doubl
                     pq.pop();
                     pq.emplace(make_pair(node->data.at(i)->idx,dist));
                 }
-                else
+                else{
                     pq.emplace(make_pair(node->data.at(i)->idx,dist));
+                }
             }
         }
         
@@ -329,12 +329,12 @@ void balltree_nearest_n(priority_queue<pair<int, double>, vector<pair<int, doubl
         double dist_1 = getDistancePivot(t, node->child1->pivot,D);
         double dist_2 = getDistancePivot(t, node->child2->pivot,D);
         if(dist_1<dist_2){
-            balltree_nearest_n(pq,node->child1,t,k,D);
-            balltree_nearest_n(pq,node->child2,t,k,D);
+            balltree_nearest_n(pq,node->child1,t,k,D,0);
+            balltree_nearest_n(pq,node->child2,t,k,D,0);
         }
         else{
-            balltree_nearest_n(pq,node->child2,t,k,D);
-            balltree_nearest_n(pq,node->child1,t,k,D);
+            balltree_nearest_n(pq,node->child2,t,k,D,0);
+            balltree_nearest_n(pq,node->child1,t,k,D,0);
         }
     }
 }
@@ -366,18 +366,15 @@ int main(int argc, char **argv)
     double end_build = omp_get_wtime()-start_build;
     cout<<"Time to create ball tree: "<<end_build<<endl;
     double start_query = omp_get_wtime();
-    //#pragma omp parallel for default(shared) private(i)
+    #pragma omp parallel for default(shared) private(i)
     for (i=0; i<n; i++) {
         priority_queue<pair<int, double>, vector<pair<int, double> >, sortNodes> pq;
         struct datapoint *target = new datapoint(X[i],i);
-        balltree_nearest_n(pq, btree->root, target,8,D);
-        //cout<<pq.size()<<endl;
-        if(i==0){
-            while ( !pq. empty() ) {
-                cout << pq.top().first << "\t"<<pq.top().second<<endl;
-                pq.pop();
-            }
-        }
+        balltree_nearest_n(pq, btree->root, target,8,D,0);
+        /*while (!pq.empty()) {
+            cout<<pq.top().first+1<<"\t"<<pq.top().second<<endl;
+            pq.pop();
+        }*/
     }
     double end_query = omp_get_wtime()-start_query;
     cout<<"Time to query ball tree: "<<end_query<<endl;
