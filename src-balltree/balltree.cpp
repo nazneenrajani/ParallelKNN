@@ -22,6 +22,8 @@
 #include <cstring>
 #include <fstream>
 #include <sstream>
+#include<limits>
+
 using namespace std;
 
 
@@ -38,23 +40,18 @@ struct datapoint {
 
 vector<datapoint> pts;
 
-struct centroid {
-    double *dim; //list of dimensions
-    centroid(double *dim){
-        this->dim =dim;
-    }
-};
+int D;
 
 struct ballnode {
     vector<struct datapoint*> data; //list of nodes it owns
     double radius;
-    struct centroid *pivot;
+    double *pivot;
     struct ballnode* child1;
     struct ballnode* child2;
     ballnode(vector<struct datapoint*> data){
         this -> data = data;
         this->radius=0;
-        this->pivot=NULL;
+        this->pivot= (double*) calloc(D,sizeof(double));
         this->child1=NULL;
         this->child2=NULL;
     }
@@ -68,16 +65,16 @@ struct balltree {
         this->root=NULL;
     }
 };
-
-pair<double,struct datapoint*> getRadius(const struct centroid *target, vector<datapoint*>& pts, int D) {
+struct balltree *btree;
+pair<double,struct datapoint*> getRadius(double *target, vector<datapoint*>& pts, int D) {
     double radius =0.0;
     struct datapoint *child1;
     for (int k=0; k<pts.size(); k++) {
         double dist = 0.0;
         for (int i = 0; i < D; ++i) {
-            dist += (target->dim[i] - pts[k]->dim[i]) * (target->dim[i] - pts[k]->dim[i]);
+            dist += (target[i] - pts[k]->dim[i]) * (target[i] - pts[k]->dim[i]);
         }
-        if(sqrt(abs(dist))>radius){
+        if(sqrt(dist)>radius){
             radius = sqrt(dist);
             child1 = pts[k];
         }
@@ -93,7 +90,7 @@ struct datapoint* getMaxDist(const struct datapoint *target, vector<datapoint*>&
         for (int i = 0; i < D; ++i) {
             dist += (target->dim[i] - pts[k]->dim[i]) * (target->dim[i] - pts[k]->dim[i]);
         }
-        if(sqrt(abs(dist))>radius){
+        if(sqrt(dist)>radius){
             radius = sqrt(dist);
             child2 = pts[k];
         }
@@ -106,46 +103,46 @@ double getDistance(struct datapoint* key, struct datapoint* curr, int D) {
     for (int i = 0; i < D; ++i) {
         dist += (key->dim[i] - curr->dim[i]) * (key->dim[i] - curr->dim[i]);
     }
-    return sqrt(abs(dist));
+    return sqrt(dist);
 }
 
-double getDistancePivot(struct datapoint* key, struct centroid* curr, int D) {
+double getDistancePivot(struct datapoint* key, double* curr, int D) {
     double dist = 0.0;
     for (int i = 0; i < D; ++i) {
-        dist += (key->dim[i] - curr->dim[i]) * (key->dim[i] - curr->dim[i]);
+        dist += (key->dim[i] - curr[i]) * (key->dim[i] - curr[i]);
     }
-    return sqrt(abs(dist));
+    return sqrt(dist);
 }
 
 void recursive_insert(struct ballnode *root, int items, int D, int leaf_size){
-    double dim[D] = {};
+    double dim[D];
+    for (int d=0; d<D; d++) {
+        dim[d]=0;
+    }
     for (int k=0; k<D; k++) {
         for (int i=0; i<items; i++) {
             dim[k] += root->data.at(i)->dim[k];
         }
         dim[k] = dim[k]/items;
+        root->pivot[k] = dim[k];
     }
-    struct centroid* pivot = new centroid(dim);
-    root->pivot = pivot;
-    //cout<<"done"<<endl;
     pair<double, struct datapoint*> answer = getRadius(root->pivot,root->data,D);
     root->radius = answer.first;
-    //cout<<"done"<<endl;
+    
     struct datapoint *child1_point = answer.second;
     struct datapoint *child2_point = getMaxDist(child1_point,root->data,D);
     
-    //cout<<"done"<<endl;
-    
     vector<datapoint*> child1_points;
     vector<datapoint*> child2_points;
-    //cout<<"done"<<endl;
+    
     for (int k=0; k<items; k++) {
         datapoint *dt = root->data.at(k);
-        if(getDistance(child1_point,dt,D)<getDistance(child2_point,dt,D))
+        if(getDistance(child1_point,dt,D)<=getDistance(child2_point,dt,D))
             child1_points.push_back(dt);
         else
             child2_points.push_back(dt);
     }
+    
     struct ballnode *child1 = new ballnode(child1_points);
     struct ballnode *child2 = new ballnode(child2_points);
     
@@ -155,50 +152,65 @@ void recursive_insert(struct ballnode *root, int items, int D, int leaf_size){
     if(child1_points.size()>leaf_size) //I might change
         recursive_insert(root->child1, child1_points.size(),D,leaf_size); //recursive insert on both childs
     else{
-        dim[D] = {};
+        dim[D];
+        for (int d=0; d<D; d++) {
+            dim[d]=0;
+        }
         for (int k=0; k<D; k++) {
             for (int i=0; i<root->child1->data.size(); i++) {
                 dim[k] += root->child1->data.at(i)->dim[k];
             }
             dim[k] = dim[k]/root->child1->data.size();
+            root->child1->pivot[k] = dim[k];
         }
-        struct centroid* pivot1 = new centroid(dim);
-        root->child1->pivot = pivot1;
-        dim[D] = {};
+        
+        dim[D];
+        for (int d=0; d<D; d++) {
+            dim[d]=0;
+        }
         for (int k=0; k<D; k++) {
             for (int i=0; i<root->child2->data.size(); i++) {
                 dim[k] += root->child2->data.at(i)->dim[k];
             }
             dim[k] = dim[k]/root->child2->data.size();
+            root->child2->pivot[k] = dim[k];
         }
-        struct centroid* pivot2 = new centroid(dim);
-        root->child2->pivot = pivot2;
+    
     }
     if(child2_points.size()>leaf_size) //I might change
+    {
         recursive_insert(root->child2, child2_points.size(),D,leaf_size);
+        
+    }
     else{
-        dim[D] = {};
+        dim[D];
+        for (int d=0; d<D; d++) {
+            dim[d]=0;
+        }
         for (int k=0; k<D; k++) {
             for (int i=0; i<root->child1->data.size(); i++) {
                 dim[k] += root->child1->data.at(i)->dim[k];
             }
             dim[k] = dim[k]/root->child1->data.size();
+            root->child1->pivot[k] = dim[k];
         }
-        struct centroid* pivot1 = new centroid(dim);
-        root->child1->pivot = pivot1;
-        dim[D] = {};
+        
+        dim[D];
+        for (int d=0; d<D; d++) {
+            dim[d]=0;
+        }
         for (int k=0; k<D; k++) {
             for (int i=0; i<root->child2->data.size(); i++) {
                 dim[k] += root->child2->data.at(i)->dim[k];
             }
             dim[k] = dim[k]/root->child2->data.size();
+            root->child2->pivot[k] = dim[k];
         }
-        struct centroid* pivot2 = new centroid(dim);
-        root->child2->pivot = pivot2;
+    
     }
 }
 
-int balltree_insert_all(struct balltree *tree, double **dim_all, int n, int D, int leaf_size)
+struct ballnode* balltree_insert_all(struct balltree* tree, double **dim_all, int n, int D, int leaf_size)
 {
     int j;
     pts.reserve(n);
@@ -212,16 +224,19 @@ int balltree_insert_all(struct balltree *tree, double **dim_all, int n, int D, i
     }
     struct ballnode *root = new ballnode(points);
     tree->root = root;
-    double dim[D] = {};
+    double dim[D];
     
+    for (int d=0; d<D; d++) {
+        dim[d]=0;
+    }
     for (int k=0; k<D; k++) {
         for (int i=0; i<n; i++) {
             dim[k] += points.at(i)->dim[k];
         }
         dim[k] = dim[k]/n;
+        tree->root->pivot[k] = dim[k];
     }
-    struct centroid* pivot = new centroid(dim);
-    tree->root->pivot = pivot;
+    
     pair<double, struct datapoint*> answer = getRadius(tree->root->pivot,tree->root->data,D);
     tree->root->radius = answer.first;
     
@@ -233,7 +248,7 @@ int balltree_insert_all(struct balltree *tree, double **dim_all, int n, int D, i
     
     for (int k=0; k<points.size(); k++) {
         datapoint *dt = points.at(k);
-        if(getDistance(child1_point,dt,D)<getDistance(child2_point,dt,D))
+        if(getDistance(child1_point,dt,D)<=getDistance(child2_point,dt,D))
             child1_points.push_back(dt);
         else
             child2_points.push_back(dt);
@@ -247,49 +262,63 @@ int balltree_insert_all(struct balltree *tree, double **dim_all, int n, int D, i
     
     if(child1_points.size()>leaf_size) // might change
         recursive_insert(tree->root->child1, child1_points.size(),D,leaf_size); //recursive insert on both childs
+
     else{
-        dim[D] = {};
+        dim[D];
+        for (int d=0; d<D; d++) {
+            dim[d]=0;
+        }
         for (int k=0; k<D; k++) {
             for (int i=0; i<tree->root->child1->data.size(); i++) {
                 dim[k] += tree->root->child1->data.at(i)->dim[k];
             }
             dim[k] = dim[k]/tree->root->child1->data.size();
+            tree->root->child1->pivot[k] = dim[k];
         }
-        struct centroid* pivot1 = new centroid(dim);
-        tree->root->child1->pivot = pivot1;
-        dim[D] = {};
+        
+        
+        dim[D];
+        for (int d=0; d<D; d++) {
+            dim[d]=0;
+        }
         for (int k=0; k<D; k++) {
             for (int i=0; i<tree->root->child2->data.size(); i++) {
                 dim[k] += tree->root->child2->data.at(i)->dim[k];
             }
             dim[k] = dim[k]/tree->root->child2->data.size();
+            tree->root->child2->pivot[k] = dim[k];
         }
-        struct centroid* pivot2 = new centroid(dim);
-        tree->root->child2->pivot = pivot2;
+    
+        
     }
     if(child2_points.size()>leaf_size) //might change
         recursive_insert(tree->root->child2, child2_points.size(),D,leaf_size);
     else{
-        dim[D] = {};
+        dim[D];
+        for (int d=0; d<D; d++) {
+            dim[d]=0;
+        }
         for (int k=0; k<D; k++) {
             for (int i=0; i<tree->root->child1->data.size(); i++) {
                 dim[k] += tree->root->child1->data.at(i)->dim[k];
             }
             dim[k] = dim[k]/tree->root->child1->data.size();
+            tree->root->child1->pivot[k] = dim[k];
         }
-        struct centroid* pivot1 = new centroid(dim);
-        tree->root->child1->pivot = pivot1;
-        dim[D] = {};
+        
+        dim[D];
+        for (int d=0; d<D; d++) {
+            dim[d]=0;
+        }
         for (int k=0; k<D; k++) {
             for (int i=0; i<tree->root->child2->data.size(); i++) {
                 dim[k] += tree->root->child2->data.at(i)->dim[k];
             }
             dim[k] = dim[k]/tree->root->child2->data.size();
+            tree->root->child2->pivot[k] = dim[k];
         }
-        struct centroid* pivot2 = new centroid(dim);
-        tree->root->child2->pivot = pivot2;
     }
-    return 0;
+    return tree->root;
 }
 
 class sortNodes {
@@ -302,26 +331,23 @@ public:
     }
 };
 
-void balltree_nearest_n(priority_queue<pair<int, double>, vector<pair<int, double> >, sortNodes>& pq, struct ballnode* node, struct datapoint *t, int k, int D, double d_parent){
-    /*if (pq.size()==k){
-        if (d_sofar>= pq.top().second) {
-        return;
+void balltree_nearest_n(priority_queue<pair<int, double>, vector<pair<int, double> >, sortNodes>& pq, struct ballnode* node, struct datapoint *t, int k, int D){
+    if (pq.size()==k){
+        if (getDistancePivot(t,node->pivot,D)>=pq.top().second) {
+            return;
         }
-    }*/
-     if(node->child1==NULL && node->child2 == NULL){
+    }
+     else if(node->child1==NULL && node->child2 == NULL){
         for (int i=0; i<node->data.size(); i++) {
             double dist =getDistance(t, node->data.at(i),D);
-            if(pq.size()==0)
-                pq.emplace(make_pair(node->data.at(i)->idx,dist));
-            else if (dist< pq.top().second){
-                if(pq.size()==k){
+            if (pq.size()==k){
+                if(dist< pq.top().second){
                     pq.pop();
                     pq.emplace(make_pair(node->data.at(i)->idx,dist));
                 }
-                else{
-                    pq.emplace(make_pair(node->data.at(i)->idx,dist));
-                }
             }
+            else
+                    pq.emplace(make_pair(node->data.at(i)->idx,dist));
         }
         
     }
@@ -329,23 +355,22 @@ void balltree_nearest_n(priority_queue<pair<int, double>, vector<pair<int, doubl
         double dist_1 = getDistancePivot(t, node->child1->pivot,D);
         double dist_2 = getDistancePivot(t, node->child2->pivot,D);
         if(dist_1<dist_2){
-            balltree_nearest_n(pq,node->child1,t,k,D,0);
-            balltree_nearest_n(pq,node->child2,t,k,D,0);
+            balltree_nearest_n(pq,node->child1,t,k,D);
+            balltree_nearest_n(pq,node->child2,t,k,D);
         }
         else{
-            balltree_nearest_n(pq,node->child2,t,k,D,0);
-            balltree_nearest_n(pq,node->child1,t,k,D,0);
+            balltree_nearest_n(pq,node->child2,t,k,D);
+            balltree_nearest_n(pq,node->child1,t,k,D);
         }
     }
 }
 
 int main(int argc, char **argv)
-{
-    int i, j,leaf_size;
+{   int i, j,leaf_size;
     unsigned int msec, start;
     double end, start1;
     int n = atoi(argv[1]);                 // # data points
-    int D = atoi(argv[2]);                  // data dimension
+    D = atoi(argv[2]);                  // data dimension
     char *fname = argv[3];
     double **X;
     X=(double**)malloc(sizeof(double*)*n);
@@ -361,16 +386,18 @@ int main(int argc, char **argv)
     omp_set_num_threads(atoi(argv[4]));
     leaf_size = atoi(argv[5]);
     double start_build = omp_get_wtime();
-    struct balltree *btree = new balltree(n);
-    balltree_insert_all(btree,X,n,D,leaf_size);
+    btree = new balltree(n);
+    struct ballnode* bnode = balltree_insert_all(btree,X,n,D,leaf_size);
+
     double end_build = omp_get_wtime()-start_build;
     cout<<"Time to create ball tree: "<<end_build<<endl;
     double start_query = omp_get_wtime();
+    
     #pragma omp parallel for default(shared) private(i)
     for (i=0; i<n; i++) {
         priority_queue<pair<int, double>, vector<pair<int, double> >, sortNodes> pq;
         struct datapoint *target = new datapoint(X[i],i);
-        balltree_nearest_n(pq, btree->root, target,8,D,0);
+        balltree_nearest_n(pq, btree->root, target,8,D);
         /*while (!pq.empty()) {
             cout<<pq.top().first+1<<"\t"<<pq.top().second<<endl;
             pq.pop();
@@ -400,7 +427,7 @@ bool read_data_from_libsvm(double **data, char *filename, int N, int D) {
             iss >> sub;
             if(sub.length() == 0) { break; }
             string feature = sub.substr(0, sub.find(':'));
-            int dim = atoi(feature.c_str()) - 1; // have to decrement to be 0-based
+            int dim = atoi(feature.c_str()) - 1;
             string val = sub.substr(sub.find(':')+1, sub.length());
             data[data_idx][dim] = atof(val.c_str());
         }
