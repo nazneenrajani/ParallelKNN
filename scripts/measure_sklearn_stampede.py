@@ -12,7 +12,7 @@ datasets = [poker, rna, cadata, covtype, year, aloi]
 
 for dataset in datasets:
   print dataset[0], ' -----------------------'
-  algs = ['ball_tree', 'kd_tree', 'brute']
+  algs = ['kd_tree', 'ball_tree', 'brute']
   for alg in algs:
     print alg, ": +++++++++++++"
     # get_knn_graph(data_file, data_format, k, d, N, alg):
