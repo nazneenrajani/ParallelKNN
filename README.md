@@ -12,4 +12,4 @@ This repository is the final project for Scalable Machine Learning. 4 approaches
 
 All experiments are run on Stampede (part of TACC). The baseline is the brute force construction of KNN graph.
 
-Please refer to  the report for indepth details of each of the approaches.
+Please refer to  the report for indepth details of each of the approaches. The report and data sets can be found at http://www.cs.utexas.edu/~nrajani/index.html#project
